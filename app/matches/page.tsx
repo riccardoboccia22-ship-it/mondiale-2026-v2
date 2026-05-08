@@ -5,12 +5,26 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 
-// Data di inizio del Mondiale 2026
 const WORLD_CUP_START_DATE = new Date('2026-06-11T21:00:00+02:00');
+
+// --- MAPPA BANDIERE (Sincronizzata e Completa) ---
+const flagMap: { [key: string]: string } = {
+  'algeria': 'dz', 'arabia saudita': 'sa', 'argentina': 'ar', 'australia': 'au', 'austria': 'at',
+  'belgio': 'be', 'bosnia ed erzegovina': 'ba', 'brasile': 'br', 'canada': 'ca', 'capo verde': 'cv',
+  'colombia': 'co', 'corea del sud': 'kr', 'costa d\'avorio': 'ci', 'croazia': 'hr', 'curaçao': 'cw', 
+  'ecuador': 'ec', 'egitto': 'eg', 'francia': 'fr', 'germania': 'de', 'ghana': 'gh', 'giappone': 'jp', 
+  'giordania': 'jo', 'haiti': 'ht', 'inghilterra': 'gb-eng', 'iran': 'ir', 'iraq': 'iq', 'marocco': 'ma', 
+  'messico': 'mx', 'norvegia': 'no', 'nuova zelanda': 'nz', 'olanda': 'nl', 'panama': 'pa', 'paraguay': 'py',
+  'portogallo': 'pt', 'qatar': 'qa', 'repubblica ceca': 'cz', 'repubblica democratica del congo': 'cd',
+  'scozia': 'gb-sct', 'senegal': 'sn', 'spagna': 'es', 'stati uniti': 'us', 'usa': 'us',
+  'sudafrica': 'za', 'svezia': 'se', 'svizzera': 'ch', 'tunisia': 'tn', 'turchia': 'tr', 
+  'uruguay': 'uy', 'uzbekistan': 'uz'
+};
 
 export default function MatchesPage() {
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [predictions, setPredictions] = useState<any>({});
   const router = useRouter();
 
@@ -24,190 +38,158 @@ export default function MatchesPage() {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // 1. Carichiamo le partite (inclusi i risultati finali inseriti dall'admin)
-      const { data: matchesData } = await supabase
-        .from('matches')
-        .select('*')
-        .order('match_date', { ascending: true });
-
+      const { data: matchesData } = await supabase.from('matches').select('*').order('match_date', { ascending: true });
       setMatches(matchesData || []);
 
-      // 2. Se l'utente è loggato, carichiamo i suoi pronostici esistenti
       if (user) {
-        const { data: predData } = await supabase
-          .from('predictions')
-          .select('*')
-          .eq('user_id', user.id);
-
+        const { data: predData } = await supabase.from('predictions').select('*').eq('user_id', user.id);
         if (predData) {
           const predMap: any = {};
-          predData.forEach(p => {
-            predMap[p.match_id] = { home: p.home_score, away: p.away_score };
-          });
+          predData.forEach(p => { predMap[p.match_id] = { home: p.home_score, away: p.away_score }; });
           setPredictions(predMap);
         }
       }
     } catch (error) {
-      console.error('Errore:', error);
-      toast.error("Errore nel caricamento dati");
+      toast.error("Errore caricamento dati");
     } finally {
       setLoading(false);
     }
   }
 
-  const savePrediction = async (matchId: number) => {
-    if (isExpired) {
-      toast.error("Tempo scaduto! Giocate chiuse.");
-      return;
-    }
+  const getFlag = (team: string) => {
+    const code = flagMap[team?.toLowerCase().trim()];
+    return code ? `https://flagcdn.com/w80/${code}.png` : null;
+  };
 
-    const pred = predictions[matchId];
-    if (!pred || pred.home === undefined || pred.away === undefined || pred.home === '' || pred.away === '') {
-      toast.error('Inserisci entrambi i gol!');
-      return;
-    }
-
+  // --- LOGICA SALVATAGGIO MASSIVO ---
+  const saveAllPredictions = async () => {
+    if (isExpired) return toast.error("Le giocate sono chiuse!");
+    
+    setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      toast.error("Devi accedere per giocare");
-      router.push('/login');
+      router.push('/profile');
       return;
     }
 
-    const { error } = await supabase.from('predictions').upsert({
-      match_id: matchId,
-      user_id: user.id,
-      home_score: parseInt(pred.home),
-      away_score: parseInt(pred.away),
-    }, { onConflict: 'match_id,user_id' });
+    // Trasformiamo l'oggetto predictions in un array pronto per Supabase
+    const rowsToUpsert = Object.entries(predictions)
+      .filter(([_, val]: any) => val.home !== '' && val.away !== '' && val.home !== undefined && val.away !== undefined)
+      .map(([matchId, val]: any) => ({
+        user_id: user.id,
+        match_id: parseInt(matchId),
+        home_score: parseInt(val.home),
+        away_score: parseInt(val.away)
+      }));
+
+    if (rowsToUpsert.length === 0) {
+      toast.error("Inserisci almeno un risultato!");
+      setSaving(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('predictions')
+      .upsert(rowsToUpsert, { onConflict: 'match_id,user_id' });
 
     if (error) {
-      toast.error('Errore nel salvataggio');
+      toast.error("Errore durante il salvataggio");
     } else {
-      toast.success('Pronostico registrato! ⚽');
+      toast.success(`${rowsToUpsert.length} pronostici salvati con successo! 🏆`);
     }
+    setSaving(false);
   };
 
   const handleInputChange = (matchId: number, team: 'home' | 'away', value: string) => {
-    if (isExpired) return;
-    setPredictions({
-      ...predictions,
-      [matchId]: { ...predictions[matchId], [team]: value }
+    if (isExpired || (value !== '' && parseInt(value) < 0)) return;
+    setPredictions({ 
+      ...predictions, 
+      [matchId]: { ...predictions[matchId], [team]: value } 
     });
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center font-black uppercase tracking-[0.3em] italic text-yellow-500 animate-pulse">
-        Preparazione Campo...
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-yellow-500 font-black animate-pulse italic uppercase tracking-widest">Caricamento Partite...</div>;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-4 pb-32">
+    <main className="min-h-screen bg-slate-950 text-white p-4 pb-48 font-sans">
       <div className="max-w-2xl mx-auto">
-        <header className="text-center mb-12 pt-4">
-          <h1 className="text-5xl font-black text-yellow-500 mb-2 uppercase tracking-tighter italic drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]">
-            Fase a Gironi
-          </h1>
-          <div className="mt-2 text-[10px] font-black uppercase tracking-widest italic">
-            {isExpired ? (
-              <span className="text-red-500 underline decoration-red-500/30 underline-offset-4">🔒 Schedine Chiuse</span>
-            ) : (
-              <span className="text-slate-500">Salva ogni partita singolarmente</span>
-            )}
-          </div>
+        <header className="text-center mb-10 pt-4">
+          <h1 className="text-4xl sm:text-5xl font-black text-yellow-500 mb-2 uppercase italic tracking-tighter">Fase a Gironi</h1>
+          <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500 italic">
+            {isExpired ? '🔒 Pronostici Chiusi' : 'Compila i risultati e salva tutto in fondo'}
+          </p>
         </header>
 
         <div className="space-y-6">
           {matches.map((match) => {
-            const hasPrediction = predictions[match.id]?.home !== undefined;
-            
+            const isFinished = match.home_score_final !== null;
             return (
-              <div key={match.id} className={`bg-slate-900/40 border ${hasPrediction ? 'border-blue-500/30' : 'border-slate-800'} p-6 rounded-[2.5rem] relative overflow-hidden transition-all group ${isExpired ? 'opacity-70' : 'hover:border-yellow-500/40 hover:bg-slate-900/60'}`}>
-                
-                <div className="flex justify-between text-[9px] text-slate-500 font-black mb-6 uppercase tracking-widest px-2 italic">
+              <div key={match.id} className="bg-slate-900/60 border-2 border-slate-800 rounded-[2.5rem] p-6 transition-all hover:border-slate-700">
+                <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-slate-500 mb-6 px-2 italic">
                   <span>{new Date(match.match_date).toLocaleString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                  <span className={hasPrediction ? "text-blue-400" : "text-yellow-500/40"}>
-                    {hasPrediction ? "✓ SALVATO" : match.stage}
-                  </span>
+                  <span>MATCH #{match.id}</span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-3 sm:gap-6">
                   {/* Home Team */}
-                  <div className="flex-1 flex items-center justify-end gap-3 text-right">
-                    <span className="font-black text-[11px] sm:text-xs uppercase tracking-tight truncate">{match.home_team}</span>
-                    <div className="w-8 h-5 flex-shrink-0 bg-slate-800 rounded-sm overflow-hidden border border-slate-700">
-                      {match.home_code && (
-                        <img src={`https://flagcdn.com/w80/${match.home_code.toLowerCase()}.png`} className="w-full h-full object-cover" alt="" />
-                      )}
-                    </div>
+                  <div className="flex-1 flex flex-col items-end gap-2 text-right">
+                    {getFlag(match.home_team) && <img src={getFlag(match.home_team)!} className="w-8 h-auto shadow-md rounded-sm" alt="" />}
+                    <span className="font-black text-[10px] sm:text-xs uppercase italic leading-tight">{match.home_team}</span>
                   </div>
                   
-                  {/* Inputs e Risultato Finale */}
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex items-center gap-1 sm:gap-2">
+                  {/* Inputs */}
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <input 
                         type="number" 
-                        placeholder="-"
-                        value={predictions[match.id]?.home ?? ''}
+                        value={predictions[match.id]?.home ?? ''} 
                         disabled={isExpired}
-                        className="w-11 h-11 sm:w-14 sm:h-14 bg-slate-950 border-2 border-slate-800 rounded-2xl text-center font-black text-yellow-500 text-xl focus:outline-none focus:border-yellow-500 transition-all appearance-none disabled:opacity-50"
+                        placeholder="-"
+                        className="w-14 h-14 bg-slate-950 border-2 border-slate-800 rounded-2xl text-center font-black text-yellow-500 text-2xl focus:border-yellow-500 outline-none transition-all disabled:opacity-50"
                         onChange={(e) => handleInputChange(match.id, 'home', e.target.value)}
                       />
-                      <span className="text-slate-700 font-black text-xl">:</span>
+                      <span className="text-slate-800 font-black text-xl">:</span>
                       <input 
                         type="number" 
-                        placeholder="-"
-                        value={predictions[match.id]?.away ?? ''}
+                        value={predictions[match.id]?.away ?? ''} 
                         disabled={isExpired}
-                        className="w-11 h-11 sm:w-14 sm:h-14 bg-slate-950 border-2 border-slate-800 rounded-2xl text-center font-black text-yellow-500 text-xl focus:outline-none focus:border-yellow-500 transition-all appearance-none disabled:opacity-50"
+                        placeholder="-"
+                        className="w-14 h-14 bg-slate-950 border-2 border-slate-800 rounded-2xl text-center font-black text-yellow-500 text-2xl focus:border-yellow-500 outline-none transition-all disabled:opacity-50"
                         onChange={(e) => handleInputChange(match.id, 'away', e.target.value)}
                       />
                     </div>
-
-                    {/* Badge Risultato Reale dell'Admin */}
-                    {(match.home_score_final !== null && match.home_score_final !== undefined) && (
-                      <div className="mt-1 bg-yellow-500/10 border border-yellow-500/20 px-3 py-1 rounded-full animate-in zoom-in duration-500">
-                        <p className="text-[9px] font-black text-yellow-500 uppercase italic">
-                          Finale: {match.home_score_final} - {match.away_score_final}
-                        </p>
+                    {isFinished && (
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+                        <p className="text-[9px] font-black text-emerald-500 uppercase italic">Finale: {match.home_score_final} - {match.away_score_final}</p>
                       </div>
                     )}
                   </div>
 
                   {/* Away Team */}
-                  <div className="flex-1 flex items-center justify-start gap-3 text-left">
-                    <div className="w-8 h-5 flex-shrink-0 bg-slate-800 rounded-sm overflow-hidden border border-slate-700">
-                      {match.away_code && (
-                        <img src={`https://flagcdn.com/w80/${match.away_code.toLowerCase()}.png`} className="w-full h-full object-cover" alt="" />
-                      )}
-                    </div>
-                    <span className="font-black text-[11px] sm:text-xs uppercase tracking-tight truncate">{match.away_team}</span>
+                  <div className="flex-1 flex flex-col items-start gap-2 text-left">
+                    {getFlag(match.away_team) && <img src={getFlag(match.away_team)!} className="w-8 h-auto shadow-md rounded-sm" alt="" />}
+                    <span className="font-black text-[10px] sm:text-xs uppercase italic leading-tight">{match.away_team}</span>
                   </div>
-                </div>
-
-                <div className="mt-8">
-                  {!isExpired && (
-                    <button 
-                      onClick={() => savePrediction(match.id)}
-                      className={`w-full py-4 text-[10px] font-black rounded-2xl transition-all uppercase tracking-[0.2em] border active:scale-[0.98] ${
-                        hasPrediction 
-                        ? 'bg-slate-900 border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400' 
-                        : 'bg-slate-800 border-slate-700 text-slate-500 hover:bg-yellow-500 hover:text-slate-950 hover:border-yellow-500'
-                      }`}
-                    >
-                      {hasPrediction ? 'Aggiorna Risultato' : 'Invia Risultato'}
-                    </button>
-                  )}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* --- BOTTONE FISSO DI SALVATAGGIO MASSIVO --- */}
+      {!isExpired && (
+        <div className="fixed bottom-24 left-0 right-0 flex justify-center px-6 z-50 pointer-events-none">
+          <button 
+            onClick={saveAllPredictions}
+            disabled={saving}
+            className="group pointer-events-auto max-w-xs w-full bg-yellow-500 text-slate-950 font-black py-5 rounded-2xl uppercase tracking-[0.2em] text-xs italic shadow-[0_20px_50px_rgba(234,179,8,0.3)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            {saving ? 'Salvataggio in corso...' : 'Salva Tutti i Pronostici'}
+            {!saving && <span className="text-lg">💾</span>}
+          </button>
+        </div>
+      )}
     </main>
   );
 }
