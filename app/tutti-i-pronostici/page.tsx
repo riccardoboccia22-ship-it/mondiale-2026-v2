@@ -7,8 +7,8 @@ import {
 } from 'lucide-react';
 
 const STAGE_POINTS: { [key: string]: number } = { 'R32': 2, 'R16': 4, 'QF': 6, 'SF': 8, 'F': 10, 'WINNER': 20 };
+const STAGE_CAPACITY: { [key: string]: number } = { 'R32': 32, 'R16': 16, 'QF': 8, 'SF': 4, 'F': 2, 'WINNER': 1 };
 
-// FlagMap consolidata
 const flagMap: { [key: string]: string } = {
   'algeria': 'dz', 'arabia saudita': 'sa', 'argentina': 'ar', 'australia': 'au', 'austria': 'at',
   'belgio': 'be', 'bosnia ed erzegovina': 'ba', 'brasile': 'br', 'canada': 'ca', 'capo verde': 'cv',
@@ -22,19 +22,25 @@ const flagMap: { [key: string]: string } = {
   'uruguay': 'uy', 'uzbekistan': 'uz'
 };
 
+// FIX DEFINITIVO: Normalizzazione stringhe a prova di bomba
 const normalizeStage = (s: string) => {
-  const u = s?.toUpperCase() || '';
+  const u = s?.toUpperCase().trim() || '';
   if (u.includes('SEDICESIM') || u === 'R32') return 'R32';
   if (u.includes('OTTAV') || u === 'R16') return 'R16';
   if (u.includes('QUART') || u === 'QF') return 'QF';
   if (u.includes('SEMIFINAL') || u === 'SF') return 'SF';
-  if (u.includes('VINCITORE') || u === 'WINNER') return 'WINNER';
-  return 'F';
+  // L'ordine è importante: prima controlliamo se è il Vincitore, per non confonderlo con la "Finale"
+  if (u.includes('VINCITOR') || u.includes('VINCITRIC') || u.includes('CAMPIONE') || u === 'WINNER') return 'WINNER';
+  if (u.includes('FINAL') || u === 'F') return 'F';
+  return u; 
 };
 
 export default function TuttiPronosticiPage() {
   const [activeTab, setActiveTab] = useState<'GIRONI' | 'BRACKET' | 'BONUS'>('GIRONI');
-  const [data, setData] = useState<any>({ profiles: [], matches: [], predictions: [], brackets: [], bonuses: [], officialResults: [] });
+  const [data, setData] = useState<any>({ 
+    profiles: [], matches: [], predictions: [], brackets: [], 
+    userBonuses: [], officialBonus: null, officialResults: [] 
+  });
   const [loading, setLoading] = useState(true);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
 
@@ -42,15 +48,25 @@ export default function TuttiPronosticiPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        const [p, m, pr, br, bo, off] = await Promise.all([
+        const [p, m, pr, br, off, offBo, usrBo] = await Promise.all([
           supabase.from('profiles').select('*').order('username'),
           supabase.from('matches').select('*').order('id'),
           supabase.from('predictions').select('*'),
           supabase.from('brackets').select('*'),
-          supabase.from('bonuses').select('*'),
-          supabase.from('official_bracket').select('*')
+          supabase.from('official_bracket').select('*'),
+          supabase.from('official_bonuses').select('*').eq('id', '00000000-0000-0000-0000-000000000000').maybeSingle(),
+          supabase.from('user_bonus_answers').select('*')
         ]);
-        setData({ profiles: p.data || [], matches: m.data || [], predictions: pr.data || [], brackets: br.data || [], bonuses: bo.data || [], officialResults: off.data || [] });
+        
+        setData({ 
+          profiles: p.data || [], 
+          matches: m.data || [], 
+          predictions: pr.data || [], 
+          brackets: br.data || [], 
+          officialResults: off.data || [],
+          officialBonus: offBo.data || null,
+          userBonuses: usrBo.data || [] 
+        });
       } catch (e) { console.error(e); } finally { setLoading(false); }
     }
     fetchData();
@@ -61,9 +77,6 @@ export default function TuttiPronosticiPage() {
     return code ? `https://flagcdn.com/w40/${code}.png` : null;
   };
 
-  const officialBonus = data.bonuses.find((b: any) => b.id === '00000000-0000-0000-0000-000000000000');
-
-  // Helper per calcolo punti gironi e colori
   const getMatchResultInfo = (pred: any, match: any) => {
     if (!pred || match.home_score_final === null) return { pts: 0, color: 'text-slate-600', label: '' };
     
@@ -87,7 +100,6 @@ export default function TuttiPronosticiPage() {
       <header className="text-center mb-8 pt-4">
         <h1 className="text-4xl font-black text-yellow-500 uppercase italic tracking-tighter">Pronostici Globali</h1>
         
-        {/* Navigazione Tab Glassmorphism */}
         <div className="flex bg-slate-900/50 backdrop-blur-md p-1 rounded-2xl border border-slate-800 mt-6 max-w-sm mx-auto">
           {([{ id: 'GIRONI', icon: <LayoutGrid size={14}/> }, { id: 'BRACKET', icon: <Trophy size={14}/> }, { id: 'BONUS', icon: <Star size={14}/> }] as any).map((tab: any) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black transition-all ${activeTab === tab.id ? 'bg-yellow-500 text-slate-950 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
@@ -99,7 +111,7 @@ export default function TuttiPronosticiPage() {
 
       <div className="max-w-2xl mx-auto space-y-4">
         
-        {/* --- SEZIONE GIRONI (COLORI E PUNTI) --- */}
+        {/* --- SEZIONE GIRONI --- */}
         {activeTab === 'GIRONI' && data.matches.map((match: any) => {
           const isExpanded = expandedMatch === match.id;
           return (
@@ -148,7 +160,7 @@ export default function TuttiPronosticiPage() {
           );
         })}
 
-        {/* --- SEZIONE BRACKET (VISUAL FEEDBACK CORRETTO/ERRATO) --- */}
+        {/* --- SEZIONE BRACKET --- */}
         {activeTab === 'BRACKET' && data.profiles.map((user: any) => {
           const userPicks = data.brackets.filter((b: any) => b.user_id === user.id);
           return (
@@ -163,21 +175,34 @@ export default function TuttiPronosticiPage() {
                   'R32': 'Sedicesimi', 'R16': 'Ottavi', 'QF': 'Quarti', 'SF': 'Semi', 'F': 'Finale', 'WINNER': 'Campione'
                 }).map(([stageKey, label]) => {
                   const picks = userPicks.filter((p: any) => normalizeStage(p.stage) === stageKey);
+                  
+                  // FIX BUG FANTASMA: Peschiamo le squadre ufficiali per questa fase ASSICURANDOCI che abbiano un nome valido
+                  const officialTeamsInStage = data.officialResults.filter((off: any) => 
+                    normalizeStage(off.stage) === stageKey && 
+                    off.team_name && 
+                    off.team_name.trim() !== ''
+                  );
+                  
+                  // Calcoliamo se la fase è PIENA in base ai dati reali, non ai record fantasma
+                  const isStageFull = officialTeamsInStage.length >= (STAGE_CAPACITY[stageKey] || 99);
+
                   return (
                     <div key={stageKey} className="space-y-2">
                       <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{label}</p>
                       <div className="flex flex-wrap gap-2">
                         {picks.map((p: any) => {
-                          const isCorrect = data.officialResults.some((off: any) => 
-                            normalizeStage(off.stage) === stageKey && off.team_name.trim().toLowerCase() === p.team_name.trim().toLowerCase()
+                          const isCorrect = officialTeamsInStage.some((off: any) => 
+                            off.team_name.trim().toLowerCase() === p.team_name.trim().toLowerCase()
                           );
-                          const isFinalized = data.officialResults.some((off: any) => normalizeStage(off.stage) === stageKey);
+                          
+                          // Diventa rosso SOLO SE l'admin ha VERAMENTE riempito tutti i posti (es: 1 per WINNER) e la squadra è sbagliata
+                          const isWrong = isStageFull && !isCorrect;
 
                           return (
                             <div key={p.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase italic transition-all ${
                               isCorrect 
                                 ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' 
-                                : (isFinalized ? 'bg-rose-500/10 border-rose-950 text-rose-800 opacity-50' : 'bg-slate-950 border-slate-800 text-slate-400')
+                                : (isWrong ? 'bg-rose-500/10 border-rose-950 text-rose-800 opacity-50' : 'bg-slate-950 border-slate-800 text-slate-400')
                             }`}>
                               {getFlagUrl(p.team_name) && <img src={getFlagUrl(p.team_name)!} className="w-4 h-auto rounded-sm" />}
                               {p.team_name}
@@ -194,13 +219,23 @@ export default function TuttiPronosticiPage() {
           );
         })}
 
-        {/* --- SEZIONE BONUS (DETTAGLIO PUNTI) --- */}
+        {/* --- SEZIONE BONUS --- */}
         {activeTab === 'BONUS' && data.profiles.map((user: any) => {
-          const b = data.bonuses.find((bonus: any) => bonus.user_id === user.id);
+          const b = data.userBonuses.find((bonus: any) => bonus.user_id === user.id);
+          const offBonus = data.officialBonus;
+          
           const checks = {
-            red: String(b?.total_red_cards) === String(officialBonus?.total_red_cards),
-            top: b?.top_scorer?.trim().toLowerCase() === officialBonus?.top_scorer?.trim().toLowerCase(),
-            match: b?.high_scoring_match?.trim().toLowerCase() === officialBonus?.high_scoring_match?.trim().toLowerCase()
+            red: offBonus?.total_red_cards != null && 
+                 b?.total_red_cards != null && 
+                 String(b.total_red_cards) === String(offBonus.total_red_cards),
+                 
+            top: !!offBonus?.top_scorer?.trim() && 
+                 !!b?.top_scorer?.trim() && 
+                 b.top_scorer.trim().toLowerCase() === offBonus.top_scorer.trim().toLowerCase(),
+                 
+            match: !!offBonus?.high_scoring_match?.trim() && 
+                   !!b?.high_scoring_match?.trim() && 
+                   b.high_scoring_match.trim().toLowerCase() === offBonus.high_scoring_match.trim().toLowerCase()
           };
 
           return (
@@ -216,7 +251,7 @@ export default function TuttiPronosticiPage() {
                   { id: 'Goleada', val: b?.high_scoring_match, ok: checks.match, icon: <Flame size={14}/> }
                 ].map((bonus) => (
                   <div key={bonus.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                    bonus.ok && officialBonus?.total_red_cards !== null ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-500'
+                    bonus.ok ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-500'
                   }`}>
                     <div className="flex items-center gap-3">
                       {bonus.icon}
@@ -224,7 +259,7 @@ export default function TuttiPronosticiPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-black text-xs uppercase">{bonus.val || '--'}</span>
-                      {bonus.ok && officialBonus?.total_red_cards !== null && <span className="font-black text-xs">+10</span>}
+                      {bonus.ok && <span className="font-black text-xs">+10</span>}
                     </div>
                   </div>
                 ))}

@@ -30,17 +30,22 @@ export default function LeaderboardPage() {
   async function runPointsUpdate() {
     try {
       setLoading(true);
-      const [prf, mtc, prd, brk, off, bon] = await Promise.all([
+      
+      // FIX ARCHITETTURA: Puntiamo alle due nuove tabelle separate
+      const [prf, mtc, prd, brk, off, offBon, usrBon] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('matches').select('*'),
         supabase.from('predictions').select('*'),
         supabase.from('brackets').select('*'),
         supabase.from('official_bracket').select('*'),
-        supabase.from('bonuses').select('*')
+        supabase.from('official_bonuses').select('*').eq('id', '00000000-0000-0000-0000-000000000000').maybeSingle(),
+        supabase.from('user_bonus_answers').select('*')
       ]);
 
       if (!prf.data) return;
-      const officialBonus = bon.data?.find(b => b.id === '00000000-0000-0000-0000-000000000000');
+      
+      // I risultati ufficiali dell'Admin
+      const officialBonus = offBon.data;
 
       const calculatedProfiles = prf.data.map((user) => {
         // 1. PUNTI GIRONI (10 - 6 - 4)
@@ -76,7 +81,9 @@ export default function LeaderboardPage() {
 
         // 3. PUNTI BONUS
         let bonusPoints = 0;
-        const userBonus = bon.data?.find(b => b.user_id === user.id);
+        // Peschiamo dalla tabella delle risposte utenti
+        const userBonus = usrBon.data?.find(b => b.user_id === user.id);
+        
         if (userBonus && officialBonus) {
           if (officialBonus.total_red_cards > 0 && userBonus.total_red_cards === officialBonus.total_red_cards) bonusPoints += 10;
           if (officialBonus.top_scorer && userBonus.top_scorer?.trim().toLowerCase() === officialBonus.top_scorer.trim().toLowerCase()) bonusPoints += 10;
@@ -94,7 +101,7 @@ export default function LeaderboardPage() {
 
       // Sincronizzazione Silenziosa Database
       ranked.forEach(async (u) => {
-        if (u.points !== u.db_points_backup) { // Piccolo trick per evitare update inutili
+        if (u.points !== u.db_points_backup) { 
           await supabase.from('profiles').update({
             points: u.points,
             points_groups: u.points_groups,

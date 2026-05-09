@@ -4,7 +4,6 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
 import { Clover, Award, Flame, Zap, Info } from 'lucide-react';
 
-// Blocco modifiche: 11 Giugno 2026, ore 20:00 (un'ora prima dell'inizio)
 const LOCK_TIME = new Date('2026-06-11T20:00:00+02:00');
 
 export default function BonusPage() {
@@ -24,8 +23,9 @@ export default function BonusPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
+        // FIX: Puntiamo alla tabella 'user_bonus_answers'
         const { data } = await supabase
-          .from('bonuses')
+          .from('user_bonus_answers')
           .select('*')
           .eq('user_id', user.id)
           .maybeSingle();
@@ -62,20 +62,33 @@ export default function BonusPage() {
       return;
     }
 
-    // SALVATAGGIO UTENTE: Puntiamo solo allo user_id
-    const { error } = await supabase.from('bonuses').upsert({
-      user_id: user.id, // Identifica univocamente il TUO pronostico
+    const payload = {
       total_red_cards: formData.total_red_cards !== '' ? parseInt(formData.total_red_cards) : null,
       top_scorer: formData.top_scorer.trim(),
       high_scoring_match: formData.high_scoring_match.trim(),
-    }, { onConflict: 'user_id' });
+    };
 
-    if (error) {
-      toast.error('Errore nel salvataggio: ' + error.message);
-    } else {
+    try {
+      // FIX DEFINITIVO: Upsert atomico gestito dal Database.
+      // Supabase gestirà il conflitto su 'user_id' e aggiornerà la riga se esiste già,
+      // altrimenti ne creerà una nuova, eliminando alla radice l'errore "DUPLICATE KEY".
+      const { error } = await supabase
+        .from('user_bonus_answers')
+        .upsert(
+          { user_id: user.id, ...payload },
+          { onConflict: 'user_id' }
+        );
+
+      if (error) throw error;
+
       toast.success('Pronostici bonus salvati! 🍀');
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error('Errore nel salvataggio: ' + error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   if (fetching) return (
@@ -102,13 +115,7 @@ export default function BonusPage() {
               <span className="flex items-center gap-2 text-[10px] font-black text-yellow-500 uppercase mb-4 tracking-wider">
                 <Zap size={14} /> Totale Espulsioni (10pt)
               </span>
-              <input
-                type="number"
-                value={formData.total_red_cards}
-                placeholder="Inserisci un numero"
-                className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-5 outline-none focus:border-yellow-500 transition-all font-black text-xl text-yellow-500 placeholder:text-slate-800"
-                onChange={(e) => setFormData({ ...formData, total_red_cards: e.target.value })}
-              />
+              <input type="number" value={formData.total_red_cards} placeholder="Inserisci un numero" className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-5 outline-none focus:border-yellow-500 transition-all font-black text-xl text-yellow-500 placeholder:text-slate-800" onChange={(e) => setFormData({ ...formData, total_red_cards: e.target.value })} />
             </label>
           </div>
 
@@ -117,13 +124,7 @@ export default function BonusPage() {
               <span className="flex items-center gap-2 text-[10px] font-black text-yellow-500 uppercase mb-4 tracking-wider">
                 <Award size={14} /> Capocannoniere (10pt)
               </span>
-              <input
-                type="text"
-                value={formData.top_scorer}
-                placeholder="Es. Mbappé"
-                className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-5 outline-none focus:border-yellow-500 transition-all font-black text-lg uppercase placeholder:text-slate-800"
-                onChange={(e) => setFormData({ ...formData, top_scorer: e.target.value })}
-              />
+              <input type="text" value={formData.top_scorer} placeholder="Es. Mbappé" className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-5 outline-none focus:border-yellow-500 transition-all font-black text-lg uppercase placeholder:text-slate-800" onChange={(e) => setFormData({ ...formData, top_scorer: e.target.value })} />
             </label>
           </div>
 
@@ -132,24 +133,14 @@ export default function BonusPage() {
               <span className="flex items-center gap-2 text-[10px] font-black text-yellow-500 uppercase mb-4 tracking-wider">
                 <Flame size={14} /> Match con più gol (10pt)
               </span>
-              <input
-                type="text"
-                value={formData.high_scoring_match}
-                placeholder="Fase a Gironi"
-                className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-5 outline-none focus:border-yellow-500 transition-all font-black text-lg uppercase placeholder:text-slate-800"
-                onChange={(e) => setFormData({ ...formData, high_scoring_match: e.target.value })}
-              />
+              <input type="text" value={formData.high_scoring_match} placeholder="Fase a Gironi" className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-5 outline-none focus:border-yellow-500 transition-all font-black text-lg uppercase placeholder:text-slate-800" onChange={(e) => setFormData({ ...formData, high_scoring_match: e.target.value })} />
             </label>
           </div>
         </div>
 
         {!isExpired && (
           <div className="fixed bottom-24 left-0 right-0 p-6 flex justify-center z-50 pointer-events-none">
-            <button
-              disabled={loading}
-              type="submit"
-              className="pointer-events-auto max-w-xs w-full bg-yellow-500 text-slate-950 font-black py-5 rounded-2xl uppercase text-[11px] tracking-[0.2em] shadow-2xl transition-all flex items-center justify-center gap-3 italic"
-            >
+            <button disabled={loading} type="submit" className="pointer-events-auto max-w-xs w-full bg-yellow-500 text-slate-950 font-black py-5 rounded-2xl uppercase text-[11px] tracking-[0.2em] shadow-2xl transition-all flex items-center justify-center gap-3 italic">
               {loading ? 'Salvataggio...' : 'Conferma Bonus'}
               {!loading && <Zap size={16} fill="currentColor" />}
             </button>

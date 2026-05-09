@@ -10,10 +10,9 @@ import {
   Search, 
   Trash2, 
   CheckCircle2,
-  Star // <--- IMPORTATA CORRETTAMENTE ORA
+  Star 
 } from 'lucide-react';
 
-// --- CONFIGURAZIONE ---
 const ADMIN_EMAIL = "ricky@mondiale.it";
 
 const STAGES = [
@@ -36,6 +35,18 @@ const TEAMS_2026 = [
   "Stati Uniti", "Sudafrica", "Svezia", "Svizzera", "Tunisia", "Turchia", 
   "Uruguay", "Uzbekistan"
 ].sort();
+
+// FIX: Aggiungiamo il Normalizzatore anche all'Admin per "smascherare" vecchi dati salvati male
+const normalizeStage = (s: string) => {
+  const u = s?.toUpperCase().trim() || '';
+  if (u.includes('SEDICESIM') || u === 'R32') return 'R32';
+  if (u.includes('OTTAV') || u === 'R16') return 'R16';
+  if (u.includes('QUART') || u === 'QF') return 'QF';
+  if (u.includes('SEMIFINAL') || u === 'SF') return 'SF';
+  if (u.includes('VINCITOR') || u.includes('VINCITRIC') || u.includes('CAMPIONE') || u === 'WINNER') return 'WINNER';
+  if (u.includes('FINAL') || u === 'F') return 'F';
+  return u; 
+};
 
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -61,13 +72,17 @@ export default function AdminPage() {
   async function fetchData() {
     const [mRes, bRes, pRes, obRes] = await Promise.all([
       supabase.from('matches').select('*').order('id', { ascending: true }),
-      supabase.from('bonuses').select('*').eq('id', '00000000-0000-0000-0000-000000000000').maybeSingle(),
+      supabase.from('official_bonuses').select('*').eq('id', '00000000-0000-0000-0000-000000000000').maybeSingle(),
       supabase.from('profiles').select('*').order('username', { ascending: true }),
-      supabase.from('official_bracket').select('*')
+      supabase.from('official_bracket').select('*').order('id', { ascending: true })
     ]);
+    
+    if (obRes.error) console.error("Errore fetch tabellone:", obRes.error.message);
+
     setMatches(mRes.data || []);
     setProfiles(pRes.data || []);
     setOfficialBracket(obRes.data || []);
+    
     if (bRes.data) {
       setBonusData({
         red: bRes.data.total_red_cards?.toString() || '',
@@ -95,34 +110,56 @@ export default function AdminPage() {
 
   const saveBonuses = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await supabase.from('bonuses').upsert({
+    const { error } = await supabase.from('official_bonuses').upsert({
       id: '00000000-0000-0000-0000-000000000000', 
-      user_id: null, 
       total_red_cards: parseInt(bonusData.red) || 0,
       top_scorer: bonusData.top.trim(),
       high_scoring_match: bonusData.high.trim()
     }, { onConflict: 'id' });
 
     if (error) toast.error(error.message);
-    else toast.success("Bonus Ufficiali aggiornati!");
+    else toast.success("Risultati Ufficiali Bonus aggiornati!");
   };
 
   const saveQualif = async () => {
-    const team = (document.getElementById('q_team') as HTMLSelectElement).value;
-    const stage = (document.getElementById('q_stage') as HTMLSelectElement).value;
+    const teamSelect = document.getElementById('q_team') as HTMLSelectElement;
+    const stageSelect = document.getElementById('q_stage') as HTMLSelectElement;
+    const team = teamSelect.value;
+    const stage = stageSelect.value;
+    
     if (!team) return toast.error("Seleziona squadra!");
+    if (!stage) return toast.error("Seleziona fase!");
+
+    let isDuplicate = false;
+    setOfficialBracket(currentBracket => {
+      // Controlliamo i duplicati usando il normalizzatore
+      isDuplicate = currentBracket.some(item => normalizeStage(item.stage) === normalizeStage(stage) && item.team_name === team);
+      return currentBracket; 
+    });
+
+    if (isDuplicate) return toast.error(`${team} è già presente in questa fase!`);
     
     const { error } = await supabase.from('official_bracket').insert([{ stage, team_name: team }]);
-    if (error) toast.error(error.message);
-    else {
-      toast.success(`${team} registrata in ${stage}!`);
-      fetchData();
+    
+    if (error) {
+      toast.error("Errore DB: " + error.message);
+    } else {
+      toast.success(`${team} registrata!`);
+      const { data: freshBracket } = await supabase.from('official_bracket').select('*').order('id', { ascending: true });
+      if (freshBracket) setOfficialBracket(freshBracket);
+      teamSelect.value = "";
     }
   };
 
-  const deleteQualif = async (id: number) => {
+  const deleteQualif = async (id: any) => {
     const { error } = await supabase.from('official_bracket').delete().eq('id', id);
-    if (!error) fetchData();
+
+    if (error) toast.error("Errore eliminazione: " + error.message);
+    else {
+      toast.success("Squadra rimossa con successo");
+      const { data: freshBracket } = await supabase.from('official_bracket').select('*').order('id', { ascending: true });
+      if (freshBracket) setOfficialBracket(freshBracket);
+    }
   };
 
   const togglePayment = async (userId: string, status: boolean) => {
@@ -158,14 +195,7 @@ export default function AdminPage() {
                   <p className="font-black text-sm uppercase italic text-white tracking-tight">{p.username || 'Guerriero'}</p>
                   <p className="text-[9px] text-slate-500 font-mono tracking-tighter">{p.email}</p>
                 </div>
-                <button 
-                  onClick={() => togglePayment(p.id, p.is_paid)} 
-                  className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${
-                    p.is_paid 
-                      ? 'bg-emerald-500 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]' 
-                      : 'bg-slate-950 text-rose-500 border border-rose-500/30'
-                  }`}
-                >
+                <button onClick={() => togglePayment(p.id, p.is_paid)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${p.is_paid ? 'bg-emerald-500 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'bg-slate-950 text-rose-500 border border-rose-500/30'}`}>
                   {p.is_paid ? <CheckCircle2 size={14} /> : null}
                   {p.is_paid ? 'PAGATO' : 'DA PAGARE'}
                 </button>
@@ -183,12 +213,7 @@ export default function AdminPage() {
             </div>
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input 
-                type="text" 
-                placeholder="CERCA..." 
-                className="bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-[10px] font-black uppercase focus:border-yellow-500 outline-none w-full sm:w-64 transition-all"
-                onChange={(e) => setSearchTerm(e.target.value)} 
-              />
+              <input type="text" placeholder="CERCA..." className="bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-[10px] font-black uppercase focus:border-yellow-500 outline-none w-full sm:w-64 transition-all" onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
           </div>
 
@@ -212,12 +237,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <button 
-                  onClick={() => updateScore(m.id)} 
-                  className={`w-full mt-8 py-5 rounded-2xl font-black uppercase text-xs italic tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3 ${
-                    m.is_finished ? 'bg-emerald-500 text-slate-950' : 'bg-yellow-500 text-slate-950 hover:bg-yellow-400'
-                  }`}
-                >
+                <button onClick={() => updateScore(m.id)} className={`w-full mt-8 py-5 rounded-2xl font-black uppercase text-xs italic tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3 ${m.is_finished ? 'bg-emerald-500 text-slate-950' : 'bg-yellow-500 text-slate-950 hover:bg-yellow-400'}`}>
                   <ShieldCheck size={18} /> {m.is_finished ? 'AGGIORNA' : 'SALVA'}
                 </button>
               </div>
@@ -225,13 +245,14 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* --- QUALIFICAZIONI --- */}
+        {/* --- TABELLONE --- */}
         <section>
           <div className="flex items-center gap-3 mb-6">
             <Trophy className="text-blue-500" size={24} />
             <h2 className="text-2xl font-black uppercase italic tracking-tight">Tabellone</h2>
           </div>
           <div className="bg-slate-900 p-8 rounded-[3rem] border border-slate-800 shadow-2xl space-y-6">
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <select id="q_team" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black text-xs uppercase outline-none focus:border-blue-500 cursor-pointer">
                 <option value="">SQUADRA...</option>
@@ -241,16 +262,42 @@ export default function AdminPage() {
                 {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
             </div>
-            <button onClick={saveQualif} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 shadow-xl">CONFERMA QUALIFICATA</button>
-            <div className="mt-8 flex flex-wrap gap-2">
-                {officialBracket.map(o => (
-                  <div key={o.id} className="bg-slate-950 border border-slate-800 px-4 py-2 rounded-xl flex items-center gap-3">
-                    <span className="text-[10px] font-black uppercase text-blue-400">{o.stage}</span>
-                    <span className="text-[10px] font-black uppercase">{o.team_name}</span>
-                    <button onClick={() => deleteQualif(o.id)}><Trash2 size={12} className="text-rose-500"/></button>
+            <button onClick={saveQualif} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 shadow-xl hover:bg-blue-500 transition-colors">
+              CONFERMA QUALIFICATA
+            </button>
+            
+            <div className="mt-10 space-y-6">
+              {STAGES.map((stage) => {
+                // FIX: L'Admin ora filtra usando il Normalizzatore! Così i vecchi dati sballati appaiono.
+                const teamsInThisStage = officialBracket.filter(o => normalizeStage(o.stage) === stage.id);
+                if (teamsInThisStage.length === 0) return null;
+
+                return (
+                  <div key={stage.id} className="bg-slate-950/50 p-5 rounded-2xl border border-slate-800/80">
+                    <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">
+                      {stage.label.split(' ')[0]}
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {teamsInThisStage.map(o => (
+                        <div key={o.id} className="bg-slate-900 border border-slate-700 px-3 py-2 rounded-xl flex items-center gap-3 shadow-md">
+                          <span className="text-[11px] font-black uppercase text-white">{o.team_name}</span>
+                          <button onClick={() => deleteQualif(o.id)} className="p-1 hover:bg-rose-500/20 rounded-md transition-colors" title="Elimina">
+                            <Trash2 size={14} className="text-rose-500"/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
+                );
+              })}
+              
+              {officialBracket.length === 0 && (
+                <div className="text-center p-6 border border-dashed border-slate-800 rounded-2xl">
+                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Nessuna squadra inserita</p>
+                </div>
+              )}
             </div>
+
           </div>
         </section>
 
@@ -258,29 +305,13 @@ export default function AdminPage() {
         <section>
           <div className="flex items-center gap-3 mb-6">
             <Star className="text-purple-500" size={24} />
-            <h2 className="text-2xl font-black uppercase italic tracking-tight">Super Bonus</h2>
+            <h2 className="text-2xl font-black uppercase italic tracking-tight">Super Bonus Ufficiali</h2>
           </div>
           <form onSubmit={saveBonuses} className="bg-slate-900 p-8 rounded-[3rem] space-y-5 border border-slate-800 shadow-2xl">
-            <input 
-              value={bonusData.red} 
-              onChange={(e) => setBonusData({...bonusData, red: e.target.value})}
-              type="number" 
-              placeholder="ROSSI TOTALI"
-              className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black text-xl text-purple-400 outline-none" 
-            />
-            <input 
-              value={bonusData.top}
-              onChange={(e) => setBonusData({...bonusData, top: e.target.value})}
-              placeholder="CAPOCANNONIERE"
-              className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black uppercase outline-none" 
-            />
-            <input 
-              value={bonusData.high}
-              onChange={(e) => setBonusData({...bonusData, high: e.target.value})}
-              placeholder="MATCH PIÙ GOL"
-              className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black uppercase outline-none" 
-            />
-            <button type="submit" className="w-full bg-purple-600 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 shadow-xl">PUBBLICA BONUS</button>
+            <input value={bonusData.red} onChange={(e) => setBonusData({...bonusData, red: e.target.value})} type="number" placeholder="ROSSI TOTALI UFFICIALI" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black text-xl text-purple-400 outline-none" />
+            <input value={bonusData.top} onChange={(e) => setBonusData({...bonusData, top: e.target.value})} placeholder="CAPOCANNONIERE UFFICIALE" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black uppercase outline-none" />
+            <input value={bonusData.high} onChange={(e) => setBonusData({...bonusData, high: e.target.value})} placeholder="MATCH PIÙ GOL UFFICIALE" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black uppercase outline-none" />
+            <button type="submit" className="w-full bg-purple-600 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 shadow-xl">PUBBLICA VERITÀ BONUS</button>
           </form>
         </section>
 

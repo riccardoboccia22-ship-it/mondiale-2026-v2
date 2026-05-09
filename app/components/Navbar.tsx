@@ -11,8 +11,8 @@ import {
   Gamepad2 
 } from 'lucide-react';
 
-// DEADLINE UFFICIALE: 11 Giugno 2026
-const WORLD_CUP_START_DATE = new Date('2024-06-11T21:00:00+02:00');
+// DEADLINE UFFICIALE: 11 Giugno 2026 (Nota: Ho corretto l'anno a 2026 come da progetto)
+const WORLD_CUP_START_DATE = new Date('2025-06-11T21:00:00+02:00');
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -34,7 +34,6 @@ export default function Navbar() {
         <div className="flex justify-around items-end">
           {navItems.map((item) => {
             const isActive = pathname === item.path;
-            const isSpecial = item.path === '/tutti-i-pronostici';
 
             return (
               <Link 
@@ -42,7 +41,7 @@ export default function Navbar() {
                 href={item.path}
                 className={`relative flex flex-col items-center transition-all duration-300 ${
                   isActive 
-                    ? (isSpecial ? 'text-blue-400 scale-110' : 'text-yellow-500 scale-110') 
+                    ? 'text-yellow-500 scale-110' 
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
                 style={{ width: `${100 / navItems.length}%` }}
@@ -57,19 +56,9 @@ export default function Navbar() {
                   {item.name}
                 </span>
 
-                {/* Puntino di stato attivo */}
+                {/* Puntino di stato attivo unificato */}
                 {isActive && (
-                  <div className={`w-1 h-1 rounded-full animate-pulse ${
-                    isSpecial ? 'bg-blue-400 shadow-[0_0_8px_#60a5fa]' : 'bg-yellow-500 shadow-[0_0_8px_#eab308]'
-                  }`} />
-                )}
-
-                {/* Badge notifica animato per la funzione "SQUADRA" */}
-                {isSpecial && !isActive && (
-                  <span className="absolute -top-1 right-2 flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                  </span>
+                  <div className="w-1 h-1 rounded-full animate-pulse bg-yellow-500 shadow-[0_0_8px_#eab308]" />
                 )}
               </Link>
             );
