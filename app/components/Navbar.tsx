@@ -20,11 +20,11 @@ export default function Navbar() {
 
   const navItems = [
     { name: 'Profilo', path: '/login', icon: <User size={20} strokeWidth={2.5} /> },
-    { name: 'Gironi', path: '/matches', icon: <Gamepad2 size={20} strokeWidth={2.5} /> },
+    { name: 'Fase Gironi', path: '/matches', icon: <Gamepad2 size={20} strokeWidth={2.5} /> },
     { name: 'Fase Finale', path: '/bracket', icon: <Trophy size={20} strokeWidth={2.5} /> },
     { name: 'Bonus', path: '/bonus', icon: <Star size={20} strokeWidth={2.5} /> },
     { name: 'Classifica', path: '/leaderboard', icon: <ListOrdered size={20} strokeWidth={2.5} /> },
-    ...(isExpired ? [{ name: 'SQUADRA', path: '/tutti-i-pronostici', icon: <Users size={20} strokeWidth={2.5} /> }] : []),
+    ...(isExpired ? [{ name: 'Tutti', path: '/tutti-i-pronostici', icon: <Users size={20} strokeWidth={2.5} /> }] : []),
   ];
 
   return (

@@ -31,7 +31,6 @@ export default function LeaderboardPage() {
     try {
       setLoading(true);
       
-      // FIX ARCHITETTURA: Puntiamo alle due nuove tabelle separate
       const [prf, mtc, prd, brk, off, offBon, usrBon] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('matches').select('*'),
@@ -44,7 +43,6 @@ export default function LeaderboardPage() {
 
       if (!prf.data) return;
       
-      // I risultati ufficiali dell'Admin
       const officialBonus = offBon.data;
 
       const calculatedProfiles = prf.data.map((user) => {
@@ -62,7 +60,6 @@ export default function LeaderboardPage() {
             if (ph === mh && pa === ma) gironiPoints += 10;
             else if (pRes === mRes && (ph === mh || pa === ma)) gironiPoints += 6;
             else if (pRes === mRes) gironiPoints += 4;
-            // Bonus consolazione: un risultato azzeccato ma segno sbagliato
             else if (ph === mh || pa === ma) gironiPoints += 2;
           }
         });
@@ -79,15 +76,51 @@ export default function LeaderboardPage() {
           if (isCorrect) bracketPoints += STAGE_POINTS[normalizedUserStage] || 0;
         });
 
-        // 3. PUNTI BONUS
+        // 3. PUNTI BONUS AGGIORNATO A 8 VARIABILI (10 PUNTI CIASCUNO)
         let bonusPoints = 0;
-        // Peschiamo dalla tabella delle risposte utenti
         const userBonus = usrBon.data?.find(b => b.user_id === user.id);
         
         if (userBonus && officialBonus) {
-          if (officialBonus.total_red_cards > 0 && userBonus.total_red_cards === officialBonus.total_red_cards) bonusPoints += 10;
-          if (officialBonus.top_scorer && userBonus.top_scorer?.trim().toLowerCase() === officialBonus.top_scorer.trim().toLowerCase()) bonusPoints += 10;
-          if (officialBonus.high_scoring_match && userBonus.high_scoring_match?.trim().toLowerCase() === officialBonus.high_scoring_match.trim().toLowerCase()) bonusPoints += 10;
+          
+          // 1. Cartellini Rossi
+          if (officialBonus.total_red_cards != null && userBonus.total_red_cards != null) {
+            if (String(userBonus.total_red_cards) === String(officialBonus.total_red_cards)) bonusPoints += 10;
+          }
+          
+          // 2. Rigori Totali
+          if (officialBonus.total_penalties != null && userBonus.total_penalties != null) {
+            if (String(userBonus.total_penalties) === String(officialBonus.total_penalties)) bonusPoints += 10;
+          }
+
+          // 3. Autogol Totali
+          if (officialBonus.total_own_goals != null && userBonus.total_own_goals != null) {
+            if (String(userBonus.total_own_goals) === String(officialBonus.total_own_goals)) bonusPoints += 10;
+          }
+
+          // 4. Capocannoniere
+          if (officialBonus.top_scorer?.trim() && userBonus.top_scorer?.trim()) {
+            if (userBonus.top_scorer.trim().toLowerCase() === officialBonus.top_scorer.trim().toLowerCase()) bonusPoints += 10;
+          }
+
+          // 5. MVP Mondiale
+          if (officialBonus.mvp_world_cup?.trim() && userBonus.mvp_world_cup?.trim()) {
+            if (userBonus.mvp_world_cup.trim().toLowerCase() === officialBonus.mvp_world_cup.trim().toLowerCase()) bonusPoints += 10;
+          }
+
+          // 6. Match più gol
+          if (officialBonus.high_scoring_match?.trim() && userBonus.high_scoring_match?.trim()) {
+            if (userBonus.high_scoring_match.trim().toLowerCase() === officialBonus.high_scoring_match.trim().toLowerCase()) bonusPoints += 10;
+          }
+
+          // 7. Girone più gol
+          if (officialBonus.highest_scoring_group?.trim() && userBonus.highest_scoring_group?.trim()) {
+            if (userBonus.highest_scoring_group.trim().toLowerCase() === officialBonus.highest_scoring_group.trim().toLowerCase()) bonusPoints += 10;
+          }
+
+          // 8. Girone meno gol
+          if (officialBonus.lowest_scoring_group?.trim() && userBonus.lowest_scoring_group?.trim()) {
+            if (userBonus.lowest_scoring_group.trim().toLowerCase() === officialBonus.lowest_scoring_group.trim().toLowerCase()) bonusPoints += 10;
+          }
         }
 
         const total = gironiPoints + bracketPoints + bonusPoints;
@@ -99,7 +132,6 @@ export default function LeaderboardPage() {
 
       setLeaderboard(ranked);
 
-      // Sincronizzazione Silenziosa Database
       ranked.forEach(async (u) => {
         if (u.points !== u.db_points_backup) { 
           await supabase.from('profiles').update({
@@ -141,7 +173,6 @@ export default function LeaderboardPage() {
       </header>
 
       <div className="max-w-3xl mx-auto">
-        {/* Header Colonne Leggibile */}
         <div className="flex px-6 mb-4 text-[9px] font-black text-slate-600 uppercase tracking-widest italic">
           <div className="flex-1">Giocatore</div>
           <div className="flex gap-6 md:gap-10 pr-2">
@@ -162,7 +193,6 @@ export default function LeaderboardPage() {
                 : 'bg-slate-900/40 border-slate-800/60'
               }`}
             >
-              {/* Rank & Info */}
               <div className="flex-1 flex items-center gap-4 min-w-0">
                 <div className="w-8 flex justify-center shrink-0">
                   {getRankIcon(player.ranking)}
@@ -179,7 +209,6 @@ export default function LeaderboardPage() {
                 </div>
               </div>
 
-              {/* Punteggi Dettagliati */}
               <div className="flex items-center gap-6 md:gap-10 shrink-0 ml-2">
                 <div className="w-8 text-center text-[10px] md:text-xs font-bold text-slate-500">
                   {player.points_groups}

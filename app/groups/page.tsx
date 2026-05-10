@@ -1,21 +1,22 @@
 'use client';
-
 import React from 'react';
+import { Shield, ArrowLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-// Mappa dei codici bandiera per tutte le squadre citate
+// Mappa bandiere unificata e robusta
 const flagMap: { [key: string]: string } = {
-  'Messico': 'mx', 'Sudafrica': 'za', 'Corea del Sud': 'kr', 'Repubblica Ceca': 'cz',
-  'Canada': 'ca', 'Svizzera': 'ch', 'Qatar': 'qa', 'Bosnia Erzegovina': 'ba',
-  'Brasile': 'br', 'Marocco': 'ma', 'Haiti': 'ht', 'Scozia': 'gb-sct',
-  'Usa': 'us', 'Australia': 'au', 'Paraguay': 'py', 'Turchia': 'tr',
-  'Germania': 'de', "Costa D'Avorio": 'ci', 'Ecuador': 'ec', 'Curacao': 'cw',
-  'Olanda': 'nl', 'Svezia': 'se', 'Giappone': 'jp', 'Tunisia': 'tn',
-  'Belgio': 'be', 'Iran': 'ir', 'Egitto': 'eg', 'Nuova Zelanda': 'nz',
-  'Spagna': 'es', 'Uruguay': 'uy', 'Arabia Saudita': 'sa', 'Capo Verde': 'cv',
-  'Francia': 'fr', 'Senegal': 'sn', 'Norvegia': 'no', 'Iraq': 'iq',
-  'Argentina': 'ar', 'Austria': 'at', 'Algeria': 'dz', 'Giordania': 'jo',
-  'Portogallo': 'pt', 'Colombia': 'co', 'Uzbekistan': 'uz', 'Repubblica Democratica del Congo': 'cd',
-  'Inghilterra': 'gb-eng', 'Croazia': 'hr', 'Ghana': 'gh', 'Panama': 'pa'
+  'algeria': 'dz', 'arabia saudita': 'sa', 'argentina': 'ar', 'australia': 'au', 'austria': 'at',
+  'belgio': 'be', 'bosnia ed erzegovina': 'ba', 'bosnia erzegovina': 'ba',
+  'brasile': 'br', 'canada': 'ca', 'capo verde': 'cv', 'colombia': 'co', 'corea del sud': 'kr', 
+  'costa d\'avorio': 'ci', 'croazia': 'hr', 'curaçao': 'cw', 'curacao': 'cw',
+  'ecuador': 'ec', 'egitto': 'eg', 'francia': 'fr', 'germania': 'de', 'ghana': 'gh', 'giappone': 'jp', 
+  'giordania': 'jo', 'haiti': 'ht', 'inghilterra': 'gb-eng', 'iran': 'ir', 'iraq': 'iq', 'marocco': 'ma', 
+  'messico': 'mx', 'norvegia': 'no', 'nuova zelanda': 'nz', 'olanda': 'nl', 'panama': 'pa', 'paraguay': 'py',
+  'portogallo': 'pt', 'qatar': 'qa', 'repubblica ceca': 'cz', 
+  'repubblica democratica del congo': 'cd', 'congo': 'cd',
+  'scozia': 'gb-sct', 'senegal': 'sn', 'spagna': 'es', 'stati uniti': 'us', 'usa': 'us',
+  'sudafrica': 'za', 'svezia': 'se', 'svizzera': 'ch', 'tunisia': 'tn', 'turchia': 'tr', 
+  'uruguay': 'uy', 'uzbekistan': 'uz'
 };
 
 const tournamentGroups = [
@@ -34,13 +35,29 @@ const tournamentGroups = [
 ];
 
 export default function GroupsPage() {
+  const router = useRouter();
+
+  const getFlagCode = (team: string) => {
+    return flagMap[team?.toLowerCase().trim()];
+  };
+
   return (
     <main className="min-h-screen bg-slate-950 text-white p-4 pb-32">
       <div className="max-w-6xl mx-auto">
         
+        {/* Tasto Torna Indietro Globale (Visibile su Mobile e Desktop) */}
+        <div className="mt-4 mb-2 flex justify-start">
+          <button 
+            onClick={() => router.back()} 
+            className="inline-flex items-center gap-2 bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white hover:bg-slate-800 transition-all active:scale-95 shadow-lg"
+          >
+            <ArrowLeft size={16} /> Torna Indietro
+          </button>
+        </div>
+
         {/* Intestazione */}
-        <header className="text-center mb-10 mt-6">
-          <h1 className="text-5xl font-black text-yellow-500 mb-2 uppercase tracking-tighter italic drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+        <header className="text-center mb-10 mt-4 relative">
+          <h1 className="text-4xl sm:text-5xl font-black text-yellow-500 mb-2 uppercase tracking-tighter italic drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]">
             I Gironi
           </h1>
           <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.3em]">
@@ -64,28 +81,35 @@ export default function GroupsPage() {
               
               {/* Lista delle Squadre */}
               <ul className="p-5 space-y-4">
-                {group.teams.map((team, index) => (
-                  <li key={team} className="flex items-center space-x-3">
-                    {/* Numero Posizione */}
-                    <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-500 flex items-center justify-center text-[10px] font-black border border-slate-700">
-                      {index + 1}
-                    </span>
-                    
-                    {/* Bandiera */}
-                    <div className="w-7 h-4.5 bg-slate-800 rounded-sm overflow-hidden border border-slate-700 flex-shrink-0 relative">
-                      <img 
-                        src={`https://flagcdn.com/w40/${flagMap[team] || 'un'}.png`} 
-                        alt="" 
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
+                {group.teams.map((team, index) => {
+                  const flagCode = getFlagCode(team);
+                  return (
+                    <li key={team} className="flex items-center space-x-3">
+                      {/* Numero Posizione */}
+                      <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-500 flex items-center justify-center text-[10px] font-black border border-slate-700">
+                        {index + 1}
+                      </span>
+                      
+                      {/* Bandiera o Fallback */}
+                      <div className="w-7 h-5 bg-slate-800 rounded-sm overflow-hidden border border-slate-700 flex-shrink-0 flex items-center justify-center relative shadow-sm">
+                        {flagCode ? (
+                          <img 
+                            src={`https://flagcdn.com/w40/${flagCode}.png`} 
+                            alt={team} 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Shield size={10} className="text-slate-500" />
+                        )}
+                      </div>
 
-                    {/* Nome Squadra */}
-                    <span className="font-bold text-xs uppercase tracking-tight text-slate-200 group-hover:text-white transition-colors">
-                      {team}
-                    </span>
-                  </li>
-                ))}
+                      {/* Nome Squadra */}
+                      <span className="font-bold text-xs uppercase tracking-tight text-slate-200 group-hover:text-white transition-colors truncate">
+                        {team}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ))}
