@@ -2,9 +2,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
-import { Trophy, Users, Zap, Search, Trash2, CheckCircle2, Star, Shield, ChevronDown, ChevronUp, BarChart3, TrendingUp, RefreshCw } from 'lucide-react';
+import {
+  Trophy, Users, Zap, Search, Trash2, CheckCircle2, Star, Shield, 
+  ChevronDown, ChevronUp, BarChart3, TrendingUp, RefreshCw, ShieldCheck
+} from 'lucide-react';
 
 const ADMIN_EMAIL = 'ricky@mondiale.it';
+
 const STAGES = [
   { id: 'R32', label: 'Sedicesimi (+2pt)', pts: 2 },
   { id: 'R16', label: 'Ottavi (+4pt)', pts: 4 },
@@ -13,21 +17,15 @@ const STAGES = [
   { id: 'F', label: 'Finale (+10pt)', pts: 10 },
   { id: 'WINNER', label: 'Vincitore Mondiale (+20pt)', pts: 20 },
 ];
+
 const GROUPS = ['Gruppo A', 'Gruppo B', 'Gruppo C', 'Gruppo D', 'Gruppo E', 'Gruppo F', 'Gruppo G', 'Gruppo H', 'Gruppo I', 'Gruppo J', 'Gruppo K', 'Gruppo L'];
 
+const TEAMS_2026 = [
+  'Algeria', 'Arabia Saudita', 'Argentina', 'Australia', 'Austria', 'Belgio', 'Bosnia ed Erzegovina', 'Brasile', 'Canada', 'Capo Verde', 'Colombia', 'Corea del Sud', "Costa d'avorio", 'Croazia', 'Curaçao', 'Ecuador', 'Egitto', 'Francia', 'Germania', 'Ghana', 'Giappone', 'Giordania', 'Haiti', 'Inghilterra', 'Iran', 'Iraq', 'Marocco', 'Messico', 'Norvegia', 'Nuova Zelanda', 'Olanda', 'Panama', 'Paraguay', 'Portogallo', 'Qatar', 'Repubblica Ceca', 'Repubblica Democratica del Congo', 'Scozia', 'Senegal', 'Spagna', 'Stati Uniti', 'Sudafrica', 'Svezia', 'Svizzera', 'Tunisia', 'Turchia', 'Uruguay', 'Uzbekistan'
+].sort();
+
 const flagMap: { [key: string]: string } = {
-  algeria: 'dz', 'arabia saudita': 'sa', argentina: 'ar', australia: 'au', austria: 'at',
-  belgio: 'be', 'bosnia ed erzegovina': 'ba', 'bosnia erzegovina': 'ba',
-  brasile: 'br', canada: 'ca', 'capo verde': 'cv', colombia: 'co', 'corea del sud': 'kr',
-  "costa d'avorio": 'ci', croazia: 'hr', curaçao: 'cw', curacao: 'cw',
-  ecuador: 'ec', egitto: 'eg', francia: 'fr', germania: 'de', ghana: 'gh', giappone: 'jp',
-  giordania: 'jo', haiti: 'ht', inghilterra: 'gb-eng', iran: 'ir', iraq: 'iq', marocco: 'ma',
-  messico: 'mx', norvegia: 'no', 'nuova zelanda': 'nz', olanda: 'nl', panama: 'pa', paraguay: 'py',
-  portogallo: 'pt', qatar: 'qa', 'repubblica ceca': 'cz',
-  'repubblica democratica del congo': 'cd', congo: 'cd',
-  scozia: 'gb-sct', senegal: 'sn', spagna: 'es', 'stati uniti': 'us', usa: 'us',
-  sudafrica: 'za', svezia: 'se', svizzera: 'ch', tunisia: 'tn', turchia: 'tr',
-  uruguay: 'uy', uzbekistan: 'uz',
+  algeria: 'dz', 'arabia saudita': 'sa', argentina: 'ar', australia: 'au', austria: 'at', belgio: 'be', 'bosnia ed erzegovina': 'ba', 'bosnia erzegovina': 'ba', brasile: 'br', canada: 'ca', 'capo verde': 'cv', colombia: 'co', 'corea del sud': 'kr', "costa d'avorio": 'ci', croazia: 'hr', curaçao: 'cw', curacao: 'cw', ecuador: 'ec', egitto: 'eg', francia: 'fr', germania: 'de', ghana: 'gh', giappone: 'jp', giordania: 'jo', haiti: 'ht', inghilterra: 'gb-eng', iran: 'ir', iraq: 'iq', marocco: 'ma', messico: 'mx', norvegia: 'no', 'nuova zelanda': 'nz', olanda: 'nl', panama: 'pa', paraguay: 'py', portogallo: 'pt', qatar: 'qa', 'repubblica ceca': 'cz', 'repubblica democratica del congo': 'cd', congo: 'cd', scozia: 'gb-sct', senegal: 'sn', spagna: 'es', 'stati uniti': 'us', usa: 'us', sudafrica: 'za', svezia: 'se', svizzera: 'ch', tunisia: 'tn', turchia: 'tr', uruguay: 'uy', uzbekistan: 'uz'
 };
 
 const normalizeStage = (s: string) => {
@@ -158,6 +156,38 @@ export default function AdminPage() {
     toast.success("Bonus aggiornati"); await syncLeaderboard(false);
   };
 
+  const saveQualif = async () => {
+    const team = (document.getElementById('q_team') as HTMLSelectElement).value;
+    const stage = (document.getElementById('q_stage') as HTMLSelectElement).value;
+    if (!team || !stage) return toast.error('Mancano dati!');
+    const { error } = await supabase.from('official_bracket').insert([{ stage, team_name: team }]);
+    if (error) toast.error(error.message);
+    else { toast.success('Squadra registrata!'); await syncLeaderboard(false); }
+  };
+
+  const deleteQualif = async (id: any) => {
+    const { error } = await supabase.from('official_bracket').delete().eq('id', id);
+    if (!error) { toast.success('Rimosso!'); await syncLeaderboard(false); }
+  };
+
+  const togglePayment = async (userId: string, status: boolean) => {
+    await supabase.from('profiles').update({ is_paid: !status }).eq('id', userId);
+    fetchData();
+  };
+
+  const getAverage = (k: string) => {
+    const v = allUserBonuses.filter(b => b[k] != null).map(b => Number(b[k]));
+    return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : 0;
+  };
+
+  const getTopPicks = (k: string) => {
+    const counts: any = {};
+    allUserBonuses.forEach(b => { if (b[k]) { const v = b[k].trim().toUpperCase(); counts[v] = (counts[v] || 0) + 1; } });
+    return Object.entries(counts).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3);
+  };
+
+  const getFlagCode = (team: string) => flagMap[team?.toLowerCase().trim()];
+
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-yellow-500 font-black animate-pulse">CARICAMENTO...</div>;
   if (!isAdmin) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-rose-500 font-black">ACCESSO NEGATO</div>;
 
@@ -165,7 +195,7 @@ export default function AdminPage() {
     <div className="min-h-screen bg-slate-950 text-white p-4 pb-32 font-sans">
       <header className="text-center mb-12 pt-6">
         <h1 className="text-5xl font-black text-yellow-500 italic uppercase tracking-tighter mb-6">Control Tower</h1>
-        <button onClick={() => syncLeaderboard(true)} disabled={syncing} className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all">
+        <button onClick={() => syncLeaderboard(true)} disabled={syncing} className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95">
           <RefreshCw size={18} className={syncing ? "animate-spin" : ""} /> {syncing ? 'Sincronizzazione...' : 'Sincronizza Classifica'}
         </button>
       </header>
@@ -173,7 +203,7 @@ export default function AdminPage() {
       <div className="max-w-3xl mx-auto space-y-6">
         {/* ISCRIZIONI */}
         <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
-          <button onClick={() => setOpenSection({...openSection, iscrizioni: !openSection.iscrizioni})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
+          <button onClick={() => setOpenSection({...openSection, iscrizioni: !openSection.iscrizioni})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
             <div className="flex items-center gap-3"><Users className="text-emerald-500" size={24} /><h2 className="text-xl font-black uppercase italic">Iscrizioni ({profiles.length})</h2></div>
             {openSection.iscrizioni ? <ChevronUp /> : <ChevronDown />}
           </button>
@@ -183,9 +213,9 @@ export default function AdminPage() {
                 <div key={p.id} className="p-4 flex items-center justify-between">
                   <div>
                     <p className="font-black text-sm uppercase italic">{p.username} <span className="text-yellow-500">#{p.ranking || '--'}</span></p>
-                    <p className="text-[9px] text-slate-500 uppercase">{p.points || 0} PT ({p.points_groups}G + {p.points_bracket}F + {p.points_bonus}B)</p>
+                    <p className="text-[9px] text-slate-500 mt-1 uppercase">{p.points || 0} PT ({p.points_groups}G + {p.points_bracket}F + {p.points_bonus}B)</p>
                   </div>
-                  <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase ${p.is_paid ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-rose-500 border border-rose-500/30'}`}>{p.is_paid ? 'PAGATO' : 'DA PAGARE'}</div>
+                  <button onClick={() => togglePayment(p.id, p.is_paid)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${p.is_paid ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-rose-500 border border-rose-500/30'}`}>{p.is_paid ? 'PAGATO' : 'DA PAGARE'}</button>
                 </div>
               ))}
             </div>
@@ -194,13 +224,13 @@ export default function AdminPage() {
 
         {/* FASE A GIRONI */}
         <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
-          <button onClick={() => setOpenSection({...openSection, risultati: !openSection.risultati})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
+          <button onClick={() => setOpenSection({...openSection, risultati: !openSection.risultati})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
             <div className="flex items-center gap-3"><Zap className="text-yellow-500" size={24} /><h2 className="text-xl font-black uppercase italic">Fase a Gironi</h2></div>
             {openSection.risultati ? <ChevronUp /> : <ChevronDown />}
           </button>
           {openSection.risultati && (
             <div className="border-t border-slate-800 p-6 space-y-4">
-              <input type="text" placeholder="CERCA SQUADRA..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-black uppercase outline-none focus:border-yellow-500" onChange={(e) => setSearchTerm(e.target.value)} />
+              <input type="text" placeholder="CERCA SQUADRA..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-black uppercase outline-none focus:border-yellow-500 transition-all" onChange={(e) => setSearchTerm(e.target.value)} />
               <div className="grid gap-3">
                 {matches.filter(m => m.home_team.toLowerCase().includes(searchTerm.toLowerCase()) || m.away_team.toLowerCase().includes(searchTerm.toLowerCase())).map(m => (
                   <div key={m.id} className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex items-center gap-4">
@@ -212,7 +242,7 @@ export default function AdminPage() {
                       <input id={`a-${m.id}`} type="number" defaultValue={m.away_score_final ?? ''} className="w-10 h-10 bg-slate-950 rounded-lg text-center font-black text-yellow-500 border border-slate-700 outline-none" />
                       <span className="text-[10px] font-black uppercase flex-1 text-left truncate">{m.away_team}</span>
                     </div>
-                    <button onClick={() => updateScore(m.id)} className="p-2 rounded-lg font-black uppercase text-[8px] tracking-tighter bg-yellow-500 text-slate-950">SALVA</button>
+                    <button onClick={() => updateScore(m.id)} className="p-2 rounded-lg font-black uppercase text-[8px] tracking-tighter bg-yellow-500 text-slate-950 active:scale-95 transition-all">SALVA</button>
                   </div>
                 ))}
               </div>
@@ -220,9 +250,50 @@ export default function AdminPage() {
           )}
         </section>
 
-        {/* BONUS UFFICIALI (CON MIGLIOR PORTIERE) */}
+        {/* FASE FINALE */}
         <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
-          <button onClick={() => setOpenSection({...openSection, bonus: !openSection.bonus})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
+          <button onClick={() => setOpenSection({...openSection, tabellone: !openSection.tabellone})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
+            <div className="flex items-center gap-3"><Trophy className="text-blue-500" size={24} /><h2 className="text-xl font-black uppercase italic">Fase Finale</h2></div>
+            {openSection.tabellone ? <ChevronUp /> : <ChevronDown />}
+          </button>
+          {openSection.tabellone && (
+            <div className="border-t border-slate-800 p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <select id="q_team" className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-xs uppercase outline-none focus:border-blue-500">
+                  <option value="">SQUADRA...</option>
+                  {TEAMS_2026.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <select id="q_stage" className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-xs uppercase outline-none focus:border-blue-500">
+                  {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </div>
+              <button onClick={saveQualif} className="w-full bg-blue-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest active:scale-95 shadow-xl transition-all">CONFERMA QUALIFICATA</button>
+              <div className="space-y-4 mt-6">
+                {STAGES.map((stg) => {
+                  const items = officialBracket.filter(o => normalizeStage(o.stage) === stg.id);
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={stg.id} className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                      <h3 className="text-[10px] font-black text-blue-500 uppercase mb-2 tracking-widest border-b border-slate-800 pb-1">{stg.label}</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {items.map(o => (
+                          <div key={o.id} className="bg-slate-900 border border-slate-700 pl-2 pr-1 py-1 rounded-lg flex items-center gap-2 shadow-sm">
+                            <span className="text-[10px] font-black uppercase text-white">{o.team_name}</span>
+                            <button onClick={() => deleteQualif(o.id)} className="p-1 hover:bg-rose-500/20 rounded transition-colors"><Trash2 size={12} className="text-rose-500" /></button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* BONUS UFFICIALI */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
+          <button onClick={() => setOpenSection({...openSection, bonus: !openSection.bonus})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
             <div className="flex items-center gap-3"><Star className="text-purple-500" size={24} /><h2 className="text-xl font-black uppercase italic">Bonus Ufficiali</h2></div>
             {openSection.bonus ? <ChevronUp /> : <ChevronDown />}
           </button>
@@ -236,16 +307,56 @@ export default function AdminPage() {
                 </div>
                 <input value={bonusData.top} onChange={(e) => setBonusData({...bonusData, top: e.target.value})} placeholder="CAPOCANNONIERE" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none" />
                 <input value={bonusData.mvp_world_cup} onChange={(e) => setBonusData({...bonusData, mvp_world_cup: e.target.value})} placeholder="MVP MONDIALE" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none" />
-                
-                {/* NUOVO INPUT: MIGLIOR PORTIERE */}
                 <input value={bonusData.best_goalkeeper} onChange={(e) => setBonusData({...bonusData, best_goalkeeper: e.target.value})} placeholder="MIGLIOR PORTIERE" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none text-purple-400" />
-                
                 <select value={bonusData.high} onChange={(e) => setBonusData({...bonusData, high: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none">
                   <option value="">PARTITA + GOL...</option>
                   {matches.map(m => <option key={m.id} value={`${m.home_team} - ${m.away_team}`}>{m.home_team} - {m.away_team}</option>)}
                 </select>
-                <button type="submit" className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs active:scale-95">SALVA BONUS</button>
+                <div className="grid grid-cols-2 gap-4">
+                   <select value={bonusData.high_group} onChange={(e) => setBonusData({...bonusData, high_group: e.target.value})} className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none focus:border-purple-500 transition-all"><option value="">GIRONE + GOL</option>{GROUPS.map(g => <option key={g} value={g}>{g}</option>)}</select>
+                   <select value={bonusData.low_group} onChange={(e) => setBonusData({...bonusData, low_group: e.target.value})} className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none focus:border-purple-500 transition-all"><option value="">GIRONE - GOL</option>{GROUPS.map(g => <option key={g} value={g}>{g}</option>)}</select>
+                </div>
+                <button type="submit" className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs active:scale-95 transition-all shadow-xl">SALVA BONUS</button>
               </form>
+            </div>
+          )}
+        </section>
+
+        {/* STATISTICHE */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl transition-all">
+          <button onClick={() => setOpenSection({...openSection, statistiche: !openSection.statistiche})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
+            <div className="flex items-center gap-3"><BarChart3 className="text-cyan-500" size={24} /><h2 className="text-xl font-black uppercase italic">Statistiche Globali</h2></div>
+            {openSection.statistiche ? <ChevronUp /> : <ChevronDown />}
+          </button>
+          {openSection.statistiche && (
+            <div className="border-t border-slate-800 p-6 space-y-6 bg-slate-950/30">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
+                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Rossi Avg</p>
+                  <p className="text-2xl font-black text-cyan-400">{getAverage('total_red_cards')}</p>
+                </div>
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
+                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Rigori Avg</p>
+                  <p className="text-2xl font-black text-cyan-400">{getAverage('total_penalties')}</p>
+                </div>
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
+                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Autogol Avg</p>
+                  <p className="text-2xl font-black text-cyan-400">{getAverage('total_own_goals')}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[ { label: 'Capocannoniere', key: 'top_scorer' }, { label: 'MVP Mondiale', key: 'mvp_world_cup' }, { label: 'Portiere (Gold)', key: 'best_goalkeeper' } ].map(s => (
+                  <div key={s.key} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
+                    <p className="text-[9px] font-black text-slate-500 uppercase mb-3 tracking-widest border-b border-slate-800 pb-1">{s.label} (Top Voti)</p>
+                    {getTopPicks(s.key).map(([name, count]: any) => (
+                      <div key={name} className="flex justify-between text-[10px] font-black uppercase italic mb-1">
+                        <span className="truncate pr-2">{name}</span>
+                        <span className="text-cyan-500 shrink-0">{count} voti</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>
