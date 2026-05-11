@@ -37,7 +37,7 @@ const GROUPS = [
 const TEAMS_2026 = [
   'Algeria', 'Arabia Saudita', 'Argentina', 'Australia', 'Austria', 'Belgio',
   'Bosnia ed Erzegovina', 'Brasile', 'Canada', 'Capo Verde', 'Colombia',
-  'Corea del Sud', "Costa d'Avorio", 'Croazia', 'Curaçao', 'Ecuador', 'Egitto',
+  'Corea del Sud', "Costa d'avorio", 'Croazia', 'Curaçao', 'Ecuador', 'Egitto',
   'Francia', 'Germania', 'Ghana', 'Giappone', 'Giordania', 'Haiti', 'Inghilterra',
   'Iran', 'Iraq', 'Marocco', 'Messico', 'Norvegia', 'Nuova Zelanda', 'Olanda',
   'Panama', 'Paraguay', 'Portogallo', 'Qatar', 'Repubblica Ceca',
@@ -134,8 +134,9 @@ export default function AdminPage() {
     }
   }
 
-  const syncLeaderboard = async () => {
-    if (!window.confirm("Vuoi ricalcolare i punti e la classifica per tutti i giocatori? L'operazione sovrascriverà la classifica attuale.")) return;
+  // CORE LOGIC: CALCOLO E SINCRONIZZAZIONE (AUTO O MANUALE)
+  const syncLeaderboard = async (isManual = true) => {
+    if (isManual && !window.confirm("Vuoi ricalcolare i punti e la classifica?")) return;
 
     setSyncing(true);
     try {
@@ -148,7 +149,7 @@ export default function AdminPage() {
         { data: offBracket },
         { data: userBrackets }
       ] = await Promise.all([
-        supabase.from('profiles').select('*'), // Carichiamo tutto per non perdere username/email
+        supabase.from('profiles').select('*'),
         supabase.from('matches').select('*').eq('is_finished', true),
         supabase.from('predictions').select('*'),
         supabase.from('official_bonuses').select('*').maybeSingle(),
@@ -159,7 +160,6 @@ export default function AdminPage() {
 
       if (!profs) throw new Error("Errore caricamento profili");
 
-      // 1. Calcolo Punti
       const calculatedData = profs.map(profile => {
         let pGroups = 0; let pBracket = 0; let pBonus = 0;
 
@@ -172,7 +172,6 @@ export default function AdminPage() {
             const mh = Number(m.home_score_final); const ma = Number(m.away_score_final);
             const pRes = ph > pa ? '1' : ph < pa ? '2' : 'X';
             const mRes = mh > ma ? '1' : mh < ma ? '2' : 'X';
-
             if (ph === mh && pa === ma) pGroups += 10;
             else if (pRes === mRes && (ph === mh || pa === ma)) pGroups += 6;
             else if (pRes === mRes) pGroups += 4;
@@ -206,21 +205,16 @@ export default function AdminPage() {
         };
       });
 
-      // 2. Calcolo Ranking
       const sorted = [...calculatedData].sort((a, b) => b.points - a.points);
-      const updates = sorted.map((u, index) => ({
-        ...u,
-        ranking: (index + 1).toString()
-      }));
+      const updates = sorted.map((u, index) => ({ ...u, ranking: (index + 1).toString() }));
 
-      // 3. Upsert
       const { error } = await supabase.from('profiles').upsert(updates, { onConflict: 'id' });
       if (error) throw error;
 
-      toast.success("Sincronizzazione completata! 🏆");
+      if (isManual) toast.success("Classifica sincronizzata! 🏆");
       fetchData();
     } catch (err: any) {
-      toast.error("Errore: " + err.message);
+      toast.error("Errore ricalcolo: " + err.message);
     } finally {
       setSyncing(false);
     }
@@ -229,6 +223,10 @@ export default function AdminPage() {
   const toggleSection = (section: keyof typeof openSection) => {
     setOpenSection(prev => ({ ...prev, [section]: !prev[section] }));
   };
+
+  const getFlagCode = (team: string) => flagMap[team?.toLowerCase().trim()];
+
+  // --- FUNZIONI DI AGGIORNAMENTO DATI CON AUTO-SYNC ---
 
   const updateScore = async (id: number) => {
     const h = (document.getElementById(`h-${id}`) as HTMLInputElement).value;
@@ -241,7 +239,10 @@ export default function AdminPage() {
     }).eq('id', id);
 
     if (error) toast.error(error.message);
-    else { toast.success(isFinished ? 'Risultato salvato!' : 'Resettato'); fetchData(); }
+    else {
+      toast.success(isFinished ? 'Risultato salvato!' : 'Resettato');
+      await syncLeaderboard(false); // AUTO-SYNC SILENZIOSO
+    }
   };
 
   const saveBonuses = async (e: React.FormEvent) => {
@@ -259,7 +260,10 @@ export default function AdminPage() {
     };
     const { error } = await supabase.from('official_bonuses').upsert(payload, { onConflict: 'id' });
     if (error) toast.error(error.message);
-    else toast.success('Bonus Ufficiali aggiornati!');
+    else {
+      toast.success('Bonus Ufficiali aggiornati!');
+      await syncLeaderboard(false); // AUTO-SYNC SILENZIOSO
+    }
   };
 
   const saveQualif = async () => {
@@ -268,12 +272,18 @@ export default function AdminPage() {
     if (!team || !stage) return toast.error('Mancano dati!');
     const { error } = await supabase.from('official_bracket').insert([{ stage, team_name: team }]);
     if (error) toast.error(error.message);
-    else { toast.success('Registrata!'); fetchData(); }
+    else {
+      toast.success('Registrata!');
+      await syncLeaderboard(false); // AUTO-SYNC SILENZIOSO
+    }
   };
 
   const deleteQualif = async (id: any) => {
     const { error } = await supabase.from('official_bracket').delete().eq('id', id);
-    if (!error) { toast.success('Rimosso!'); fetchData(); }
+    if (!error) {
+      toast.success('Rimosso!');
+      await syncLeaderboard(false); // AUTO-SYNC SILENZIOSO
+    }
   };
 
   const togglePayment = async (userId: string, status: boolean) => {
@@ -299,7 +309,7 @@ export default function AdminPage() {
     <div className="min-h-screen bg-slate-950 text-white p-4 pb-32 font-sans">
       <header className="text-center mb-12 pt-6">
         <h1 className="text-5xl font-black text-yellow-500 italic uppercase tracking-tighter mb-6">Control Tower</h1>
-        <button onClick={syncLeaderboard} disabled={syncing} className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
+        <button onClick={() => syncLeaderboard(true)} disabled={syncing} className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
           <RefreshCw size={18} className={syncing ? "animate-spin" : ""} />
           {syncing ? 'Sincronizzazione...' : 'Sincronizza Classifica'}
         </button>
@@ -307,7 +317,7 @@ export default function AdminPage() {
 
       <div className="max-w-3xl mx-auto space-y-6">
         {/* SEZIONE ISCRIZIONI */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
           <button onClick={() => toggleSection('iscrizioni')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
             <div className="flex items-center gap-3"><Users className="text-emerald-500" size={24} /><h2 className="text-xl font-black uppercase italic">Iscrizioni ({profiles.length})</h2></div>
             {openSection.iscrizioni ? <ChevronUp /> : <ChevronDown />}
@@ -330,7 +340,7 @@ export default function AdminPage() {
         </section>
 
         {/* SEZIONE RISULTATI GIRONI */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
           <button onClick={() => toggleSection('risultati')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
             <div className="flex items-center gap-3"><Zap className="text-yellow-500" size={24} /><h2 className="text-xl font-black uppercase italic">Fase a Gironi</h2></div>
             {openSection.risultati ? <ChevronUp /> : <ChevronDown />}
@@ -362,7 +372,7 @@ export default function AdminPage() {
         </section>
 
         {/* SEZIONE FASE FINALE */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
           <button onClick={() => toggleSection('tabellone')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
             <div className="flex items-center gap-3"><Trophy className="text-blue-500" size={24} /><h2 className="text-xl font-black uppercase italic">Fase Finale</h2></div>
             {openSection.tabellone ? <ChevronUp /> : <ChevronDown />}
@@ -378,7 +388,7 @@ export default function AdminPage() {
                   {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
               </div>
-              <button onClick={saveQualif} className="w-full bg-blue-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest">CONFERMA QUALIFICATA</button>
+              <button onClick={saveQualif} className="w-full bg-blue-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest active:scale-95">CONFERMA QUALIFICATA</button>
               <div className="space-y-4 mt-6">
                 {STAGES.map((stg) => {
                   const items = officialBracket.filter(o => normalizeStage(o.stage) === stg.id);
@@ -403,7 +413,7 @@ export default function AdminPage() {
         </section>
 
         {/* SEZIONE BONUS UFFICIALI */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
           <button onClick={() => toggleSection('bonus')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
             <div className="flex items-center gap-3"><Star className="text-purple-500" size={24} /><h2 className="text-xl font-black uppercase italic">Bonus Ufficiali</h2></div>
             {openSection.bonus ? <ChevronUp /> : <ChevronDown />}
@@ -420,20 +430,20 @@ export default function AdminPage() {
                 <input value={bonusData.mvp_world_cup} onChange={(e) => setBonusData({...bonusData, mvp_world_cup: e.target.value})} placeholder="MVP MONDIALE" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none" />
                 <select value={bonusData.high} onChange={(e) => setBonusData({...bonusData, high: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none">
                   <option value="">PARTITA + GOL...</option>
-                  {matches.map(m => <option key={m.id} value={`${m.home_team} - ${m.away_team}`}>{m.home_team} - {m.away_team}</option>)}
+                  {matches.filter(m => !m.home_team.includes('TBD')).map(m => <option key={m.id} value={`${m.home_team} - ${m.away_team}`}>{m.home_team} - {m.away_team}</option>)}
                 </select>
                 <div className="grid grid-cols-2 gap-4">
                    <select value={bonusData.high_group} onChange={(e) => setBonusData({...bonusData, high_group: e.target.value})} className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none"><option value="">GIRONE + GOL</option>{GROUPS.map(g => <option key={g} value={g}>{g}</option>)}</select>
                    <select value={bonusData.low_group} onChange={(e) => setBonusData({...bonusData, low_group: e.target.value})} className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none"><option value="">GIRONE - GOL</option>{GROUPS.map(g => <option key={g} value={g}>{g}</option>)}</select>
                 </div>
-                <button type="submit" className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs">SALVA BONUS</button>
+                <button type="submit" className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs active:scale-95 transition-all">SALVA BONUS</button>
               </form>
             </div>
           )}
         </section>
 
         {/* SEZIONE STATISTICHE */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
           <button onClick={() => toggleSection('statistiche')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30">
             <div className="flex items-center gap-3"><BarChart3 className="text-cyan-500" size={24} /><h2 className="text-xl font-black uppercase italic">Statistiche Globali</h2></div>
             {openSection.statistiche ? <ChevronUp /> : <ChevronDown />}
@@ -442,15 +452,15 @@ export default function AdminPage() {
             <div className="border-t border-slate-800 p-6 space-y-6 bg-slate-950/30">
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-slate-900 p-4 rounded-2xl text-center border border-slate-800">
-                  <p className="text-[8px] font-black text-slate-500 mb-1">ROSSI AVG</p>
+                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase">Rossi Avg</p>
                   <p className="text-2xl font-black text-cyan-400">{getAverage('total_red_cards')}</p>
                 </div>
                 <div className="bg-slate-900 p-4 rounded-2xl text-center border border-slate-800">
-                  <p className="text-[8px] font-black text-slate-500 mb-1">RIGORI AVG</p>
+                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase">Rigori Avg</p>
                   <p className="text-2xl font-black text-cyan-400">{getAverage('total_penalties')}</p>
                 </div>
                 <div className="bg-slate-900 p-4 rounded-2xl text-center border border-slate-800">
-                  <p className="text-[8px] font-black text-slate-500 mb-1">AUTOGOL AVG</p>
+                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase">Autogol Avg</p>
                   <p className="text-2xl font-black text-cyan-400">{getAverage('total_own_goals')}</p>
                 </div>
               </div>
