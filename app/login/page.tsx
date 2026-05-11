@@ -55,7 +55,10 @@ export default function ProfilePage() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const fakeEmail = `${username.trim().toLowerCase()}@mondiale.it`;
+    
+    // FIX: Rimuoviamo gli spazi vuoti dall'username per creare una email finta valida per Supabase
+    const safeUsernameForEmail = username.trim().toLowerCase().replace(/\s+/g, '');
+    const fakeEmail = `${safeUsernameForEmail}@mondiale.it`;
 
     if (isRegistering) {
       const { data, error } = await supabase.auth.signUp({
@@ -68,7 +71,7 @@ export default function ProfilePage() {
       } else if (data.user) {
         await supabase.from('profiles').insert([{
           id: data.user.id,
-          username: username,
+          username: username.trim(), // Salviamo il vero nome con gli spazi se ci sono
           points: 0,
           points_groups: 0,
           points_bracket: 0,
@@ -154,7 +157,7 @@ export default function ProfilePage() {
                 { label: 'Fase Finale', val: stats.bracket },
                 { label: 'Bonus', val: stats.bonus }
               ].map((s) => (
-                <div key={s.label} className="bg-slate-900/50 border border-slate-800 p-4 rounded-3xl text-center">
+                <div key={s.label} className="bg-slate-900/50 border border-slate-800 p-4 rounded-3xl text-center shadow-lg">
                   <p className="text-[8px] font-black text-slate-500 uppercase italic mb-1">{s.label}</p>
                   <p className="text-xl font-black text-white">{s.val}</p>
                 </div>
@@ -163,14 +166,14 @@ export default function ProfilePage() {
 
             {/* AZIONI DI GIOCO */}
             <div className="space-y-3 pt-6 border-t border-slate-900">
-              <button onClick={() => router.push('/matches')} className="w-full py-5 bg-white text-slate-950 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-yellow-400 transition-all flex items-center justify-center gap-2">
+              <button onClick={() => router.push('/matches')} className="w-full py-5 bg-white text-slate-950 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-yellow-400 transition-all flex items-center justify-center gap-2 shadow-xl">
                 Fase a Gironi ⚽
               </button>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => router.push('/bracket')} className="py-4 bg-slate-900 border border-slate-800 text-white font-black rounded-2xl uppercase tracking-widest text-[9px] hover:border-yellow-500/50 transition-all">
+                <button onClick={() => router.push('/bracket')} className="py-4 bg-slate-900 border border-slate-800 text-white font-black rounded-2xl uppercase tracking-widest text-[9px] hover:border-yellow-500/50 transition-all shadow-md">
                   Fase Finale 🏆
                 </button>
-                <button onClick={() => router.push('/bonus')} className="py-4 bg-slate-900 border border-slate-800 text-white font-black rounded-2xl uppercase tracking-widest text-[9px] hover:border-yellow-500/50 transition-all">
+                <button onClick={() => router.push('/bonus')} className="py-4 bg-slate-900 border border-slate-800 text-white font-black rounded-2xl uppercase tracking-widest text-[9px] hover:border-yellow-500/50 transition-all shadow-md">
                   Super Bonus ⭐
                 </button>
               </div>
@@ -199,7 +202,7 @@ export default function ProfilePage() {
             <form onSubmit={handleAuth} className="space-y-4">
               <input type="text" placeholder="USERNAME" className="w-full p-4 bg-slate-950 border-2 border-slate-800 rounded-2xl focus:border-yellow-500 outline-none text-white font-black text-xs uppercase" value={username} onChange={(e) => setUsername(e.target.value)} required />
               <input type="password" placeholder="PASSWORD" className="w-full p-4 bg-slate-950 border-2 border-slate-800 rounded-2xl focus:border-yellow-500 outline-none text-white font-black text-xs uppercase" value={password} onChange={(e) => setPassword(e.target.value)} required />
-              <button type="submit" disabled={loading} className="w-full py-5 bg-yellow-500 text-slate-950 font-black rounded-2xl uppercase tracking-widest text-xs mt-4 active:scale-95 shadow-xl shadow-yellow-500/10">
+              <button type="submit" disabled={loading} className="w-full py-5 bg-yellow-500 text-slate-950 font-black rounded-2xl uppercase tracking-widest text-xs mt-4 active:scale-95 shadow-xl shadow-yellow-500/10 transition-all">
                 {loading ? 'Sincronizzazione...' : isRegistering ? 'Crea Account' : 'Inizia a Giocare'}
               </button>
             </form>

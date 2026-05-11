@@ -10,7 +10,15 @@ import {
   Search, 
   Trash2, 
   CheckCircle2,
-  Star 
+  Star,
+  Shield,
+  Goal,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  ShieldAlert,
+  Target,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 const ADMIN_EMAIL = "ricky@mondiale.it";
@@ -24,6 +32,8 @@ const STAGES = [
   { id: 'WINNER', label: 'Vincitore Mondiale (+20pt)' },
 ];
 
+const GROUPS = ['Gruppo A', 'Gruppo B', 'Gruppo C', 'Gruppo D', 'Gruppo E', 'Gruppo F', 'Gruppo G', 'Gruppo H', 'Gruppo I', 'Gruppo J', 'Gruppo K', 'Gruppo L'];
+
 const TEAMS_2026 = [
   "Algeria", "Arabia Saudita", "Argentina", "Australia", "Austria", "Belgio", 
   "Bosnia ed Erzegovina", "Brasile", "Canada", "Capo Verde", "Colombia", 
@@ -36,7 +46,21 @@ const TEAMS_2026 = [
   "Uruguay", "Uzbekistan"
 ].sort();
 
-// FIX: Aggiungiamo il Normalizzatore anche all'Admin per "smascherare" vecchi dati salvati male
+const flagMap: { [key: string]: string } = {
+  'algeria': 'dz', 'arabia saudita': 'sa', 'argentina': 'ar', 'australia': 'au', 'austria': 'at',
+  'belgio': 'be', 'bosnia ed erzegovina': 'ba', 'bosnia erzegovina': 'ba',
+  'brasile': 'br', 'canada': 'ca', 'capo verde': 'cv', 'colombia': 'co', 'corea del sud': 'kr', 
+  'costa d\'avorio': 'ci', 'croazia': 'hr', 'curaçao': 'cw', 'curacao': 'cw',
+  'ecuador': 'ec', 'egitto': 'eg', 'francia': 'fr', 'germania': 'de', 'ghana': 'gh', 'giappone': 'jp', 
+  'giordania': 'jo', 'haiti': 'ht', 'inghilterra': 'gb-eng', 'iran': 'ir', 'iraq': 'iq', 'marocco': 'ma', 
+  'messico': 'mx', 'norvegia': 'no', 'nuova zelanda': 'nz', 'olanda': 'nl', 'panama': 'pa', 'paraguay': 'py',
+  'portogallo': 'pt', 'qatar': 'qa', 'repubblica ceca': 'cz', 
+  'repubblica democratica del congo': 'cd', 'congo': 'cd',
+  'scozia': 'gb-sct', 'senegal': 'sn', 'spagna': 'es', 'stati uniti': 'us', 'usa': 'us',
+  'sudafrica': 'za', 'svezia': 'se', 'svizzera': 'ch', 'tunisia': 'tn', 'turchia': 'tr', 
+  'uruguay': 'uy', 'uzbekistan': 'uz'
+};
+
 const normalizeStage = (s: string) => {
   const u = s?.toUpperCase().trim() || '';
   if (u.includes('SEDICESIM') || u === 'R32') return 'R32';
@@ -51,10 +75,28 @@ const normalizeStage = (s: string) => {
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  // FIX: Ora tutte le sezioni partono chiuse (false)
+  const [openSection, setOpenSection] = useState<{
+    iscrizioni: boolean;
+    risultati: boolean;
+    tabellone: boolean;
+    bonus: boolean;
+  }>({
+    iscrizioni: false,
+    risultati: false,
+    tabellone: false,
+    bonus: false
+  });
+
   const [matches, setMatches] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [officialBracket, setOfficialBracket] = useState<any[]>([]);
-  const [bonusData, setBonusData] = useState({ red: '', top: '', high: '' });
+  
+  const [bonusData, setBonusData] = useState({ 
+    red: '', top: '', high: '',
+    penalties: '', own_goals: '', high_group: '', low_group: '', mvp_world_cup: ''
+  });
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
@@ -77,48 +119,66 @@ export default function AdminPage() {
       supabase.from('official_bracket').select('*').order('id', { ascending: true })
     ]);
     
-    if (obRes.error) console.error("Errore fetch tabellone:", obRes.error.message);
-
     setMatches(mRes.data || []);
     setProfiles(pRes.data || []);
     setOfficialBracket(obRes.data || []);
     
     if (bRes.data) {
       setBonusData({
-        red: bRes.data.total_red_cards?.toString() || '',
+        red: bRes.data.total_red_cards != null ? bRes.data.total_red_cards.toString() : '',
         top: bRes.data.top_scorer || '',
-        high: bRes.data.high_scoring_match || ''
+        high: bRes.data.high_scoring_match || '',
+        penalties: bRes.data.total_penalties != null ? bRes.data.total_penalties.toString() : '',
+        own_goals: bRes.data.total_own_goals != null ? bRes.data.total_own_goals.toString() : '',
+        high_group: bRes.data.highest_scoring_group || '',
+        low_group: bRes.data.lowest_scoring_group || '',
+        mvp_world_cup: bRes.data.mvp_world_cup || '',
       });
     }
   }
 
+  const toggleSection = (section: keyof typeof openSection) => {
+    setOpenSection(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const getFlagCode = (team: string) => flagMap[team?.toLowerCase().trim()];
+
   const updateScore = async (id: number) => {
     const h = (document.getElementById(`h-${id}`) as HTMLInputElement).value;
     const a = (document.getElementById(`a-${id}`) as HTMLInputElement).value;
+    const isFinished = h !== '' && a !== '';
     const { error } = await supabase.from('matches').update({
-      home_score_final: parseInt(h),
-      away_score_final: parseInt(a),
-      is_finished: true
+      home_score_final: isFinished ? parseInt(h) : null,
+      away_score_final: isFinished ? parseInt(a) : null,
+      is_finished: isFinished
     }).eq('id', id);
 
     if (error) toast.error(error.message);
     else {
-      toast.success("Risultato Match salvato!");
-      setMatches(matches.map(m => m.id === id ? { ...m, is_finished: true, home_score_final: h, away_score_final: a } : m));
+      toast.success(isFinished ? "Risultato salvato!" : "Risultato resettato");
+      fetchData();
     }
   };
 
   const saveBonuses = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await supabase.from('official_bonuses').upsert({
+    
+    const payload = {
       id: '00000000-0000-0000-0000-000000000000', 
-      total_red_cards: parseInt(bonusData.red) || 0,
-      top_scorer: bonusData.top.trim(),
-      high_scoring_match: bonusData.high.trim()
-    }, { onConflict: 'id' });
+      total_red_cards: bonusData.red !== '' ? parseInt(bonusData.red) : null,
+      total_penalties: bonusData.penalties !== '' ? parseInt(bonusData.penalties) : null,
+      total_own_goals: bonusData.own_goals !== '' ? parseInt(bonusData.own_goals) : null,
+      top_scorer: bonusData.top.trim() || null,
+      mvp_world_cup: bonusData.mvp_world_cup.trim() || null,
+      high_scoring_match: bonusData.high || null,
+      highest_scoring_group: bonusData.high_group || null,
+      lowest_scoring_group: bonusData.low_group || null
+    };
+
+    const { error } = await supabase.from('official_bonuses').upsert(payload, { onConflict: 'id' });
 
     if (error) toast.error(error.message);
-    else toast.success("Risultati Ufficiali Bonus aggiornati!");
+    else toast.success("Bonus Ufficiali aggiornati!");
   };
 
   const saveQualif = async () => {
@@ -126,193 +186,234 @@ export default function AdminPage() {
     const stageSelect = document.getElementById('q_stage') as HTMLSelectElement;
     const team = teamSelect.value;
     const stage = stageSelect.value;
-    
-    if (!team) return toast.error("Seleziona squadra!");
-    if (!stage) return toast.error("Seleziona fase!");
+    if (!team || !stage) return toast.error("Seleziona squadra e fase!");
 
-    let isDuplicate = false;
-    setOfficialBracket(currentBracket => {
-      // Controlliamo i duplicati usando il normalizzatore
-      isDuplicate = currentBracket.some(item => normalizeStage(item.stage) === normalizeStage(stage) && item.team_name === team);
-      return currentBracket; 
-    });
-
-    if (isDuplicate) return toast.error(`${team} è già presente in questa fase!`);
-    
     const { error } = await supabase.from('official_bracket').insert([{ stage, team_name: team }]);
-    
-    if (error) {
-      toast.error("Errore DB: " + error.message);
-    } else {
-      toast.success(`${team} registrata!`);
-      const { data: freshBracket } = await supabase.from('official_bracket').select('*').order('id', { ascending: true });
-      if (freshBracket) setOfficialBracket(freshBracket);
-      teamSelect.value = "";
-    }
+    if (error) toast.error(error.message);
+    else { toast.success("Squadra registrata!"); fetchData(); }
   };
 
   const deleteQualif = async (id: any) => {
     const { error } = await supabase.from('official_bracket').delete().eq('id', id);
-
-    if (error) toast.error("Errore eliminazione: " + error.message);
-    else {
-      toast.success("Squadra rimossa con successo");
-      const { data: freshBracket } = await supabase.from('official_bracket').select('*').order('id', { ascending: true });
-      if (freshBracket) setOfficialBracket(freshBracket);
-    }
+    if (!error) { toast.success("Rimosso!"); fetchData(); }
   };
 
   const togglePayment = async (userId: string, status: boolean) => {
     const { error } = await supabase.from('profiles').update({ is_paid: !status }).eq('id', userId);
-    if (!error) setProfiles(profiles.map(p => p.id === userId ? { ...p, is_paid: !status } : p));
+    if (!error) fetchData();
   };
 
-  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-yellow-500 font-black animate-pulse uppercase italic">Control Tower Inizializzazione...</div>;
-  if (!isAdmin) return <div className="min-h-screen bg-slate-950 flex items-center justify-center p-10"><div className="text-rose-500 font-black border-4 border-rose-500 p-10 uppercase tracking-[0.4em]">ACCESSO NEGATO</div></div>;
+  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-yellow-500 font-black animate-pulse uppercase italic">Inizializzazione...</div>;
+  if (!isAdmin) return <div className="min-h-screen bg-slate-950 flex items-center justify-center p-10"><div className="text-rose-500 font-black border-4 border-rose-500 p-10 uppercase">ACCESSO NEGATO</div></div>;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4 pb-32 font-sans">
       <header className="text-center mb-12 pt-6">
         <h1 className="text-5xl font-black text-yellow-500 italic uppercase tracking-tighter">Control Tower</h1>
-        <div className="flex justify-center gap-4 mt-2">
-           <span className="text-[10px] bg-slate-900 px-3 py-1 rounded-full border border-slate-800 text-slate-500 font-black uppercase tracking-widest">Admin Mode</span>
-           <span className="text-[10px] bg-yellow-500/10 px-3 py-1 rounded-full border border-yellow-500/20 text-yellow-500 font-black uppercase tracking-widest">v2.6 Stable</span>
-        </div>
       </header>
 
-      <div className="max-w-3xl mx-auto space-y-20">
+      <div className="max-w-3xl mx-auto space-y-6">
         
-        {/* --- CASSA --- */}
-        <section>
-          <div className="flex items-center gap-3 mb-6">
-            <Users className="text-emerald-500" size={24} />
-            <h2 className="text-2xl font-black uppercase italic tracking-tight">Iscrizioni</h2>
-          </div>
-          <div className="bg-slate-900 rounded-[2.5rem] border border-slate-800 divide-y divide-slate-800/50 overflow-hidden shadow-2xl">
-            {profiles.map(p => (
-              <div key={p.id} className="p-6 flex items-center justify-between hover:bg-slate-800/20 transition-all">
-                <div className="flex flex-col">
-                  <p className="font-black text-sm uppercase italic text-white tracking-tight">{p.username || 'Guerriero'}</p>
-                  <p className="text-[9px] text-slate-500 font-mono tracking-tighter">{p.email}</p>
+        {/* --- 1. ISCRIZIONI --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button onClick={() => toggleSection('iscrizioni')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
+            <div className="flex items-center gap-3">
+              <Users className="text-emerald-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">Iscrizioni ({profiles.length})</h2>
+            </div>
+            {openSection.iscrizioni ? <ChevronUp className="text-slate-500" /> : <ChevronDown className="text-slate-500" />}
+          </button>
+          
+          {openSection.iscrizioni && (
+            <div className="bg-slate-900 border-t border-slate-800 divide-y divide-slate-800/50">
+              {profiles.map(p => (
+                <div key={p.id} className="p-4 flex items-center justify-between hover:bg-slate-800/20">
+                  <div>
+                    <p className="font-black text-sm uppercase italic text-white">{p.username || 'Guerriero'}</p>
+                    <p className="text-[9px] text-slate-500 font-mono">{p.email}</p>
+                  </div>
+                  <button onClick={() => togglePayment(p.id, p.is_paid)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${p.is_paid ? 'bg-emerald-500 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-slate-950 text-rose-500 border border-rose-500/30'}`}>
+                    {p.is_paid ? <CheckCircle2 size={14} /> : null}
+                    {p.is_paid ? 'PAGATO' : 'DA PAGARE'}
+                  </button>
                 </div>
-                <button onClick={() => togglePayment(p.id, p.is_paid)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${p.is_paid ? 'bg-emerald-500 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'bg-slate-950 text-rose-500 border border-rose-500/30'}`}>
-                  {p.is_paid ? <CheckCircle2 size={14} /> : null}
-                  {p.is_paid ? 'PAGATO' : 'DA PAGARE'}
-                </button>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
 
-        {/* --- MATCH --- */}
-        <section>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
+        {/* --- 2. FASE A GIRONI --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button onClick={() => toggleSection('risultati')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
             <div className="flex items-center gap-3">
               <Zap className="text-yellow-500" size={24} />
-              <h2 className="text-2xl font-black uppercase italic tracking-tight">Risultati Reali</h2>
+              <h2 className="text-xl font-black uppercase italic tracking-tight">Fase a Gironi</h2>
             </div>
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input type="text" placeholder="CERCA..." className="bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-[10px] font-black uppercase focus:border-yellow-500 outline-none w-full sm:w-64 transition-all" onChange={(e) => setSearchTerm(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid gap-6">
-            {matches.filter(m => m.home_team.toLowerCase().includes(searchTerm.toLowerCase()) || m.away_team.toLowerCase().includes(searchTerm.toLowerCase())).map(m => (
-              <div key={m.id} className={`bg-slate-900/40 p-8 rounded-[3rem] border transition-all ${m.is_finished ? 'border-emerald-500/20 shadow-none' : 'border-slate-800 shadow-2xl'}`}>
-                <div className="flex justify-between items-center mb-6">
-                  <span className="text-[10px] text-slate-600 uppercase font-black tracking-widest italic">ID #{m.id}</span>
-                  {m.is_finished && <span className="text-[10px] text-emerald-400 font-black uppercase italic tracking-widest flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1 rounded-full">FINITA</span>}
-                </div>
-                
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 text-center space-y-2">
-                    <p className="font-black uppercase italic text-xs tracking-tight">{m.home_team}</p>
-                    <input id={`h-${m.id}`} type="number" defaultValue={m.home_score_final} className="w-20 h-20 bg-slate-950 border-2 border-slate-800 rounded-[1.5rem] text-center font-black text-4xl text-yellow-500 focus:border-yellow-500 outline-none" />
-                  </div>
-                  <div className="text-slate-800 font-black text-2xl mt-8">:</div>
-                  <div className="flex-1 text-center space-y-2">
-                    <p className="font-black uppercase italic text-xs tracking-tight">{m.away_team}</p>
-                    <input id={`a-${m.id}`} type="number" defaultValue={m.away_score_final} className="w-20 h-20 bg-slate-950 border-2 border-slate-800 rounded-[1.5rem] text-center font-black text-4xl text-yellow-500 focus:border-yellow-500 outline-none" />
-                  </div>
-                </div>
-
-                <button onClick={() => updateScore(m.id)} className={`w-full mt-8 py-5 rounded-2xl font-black uppercase text-xs italic tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3 ${m.is_finished ? 'bg-emerald-500 text-slate-950' : 'bg-yellow-500 text-slate-950 hover:bg-yellow-400'}`}>
-                  <ShieldCheck size={18} /> {m.is_finished ? 'AGGIORNA' : 'SALVA'}
-                </button>
+            {openSection.risultati ? <ChevronUp className="text-slate-500" /> : <ChevronDown className="text-slate-500" />}
+          </button>
+          
+          {openSection.risultati && (
+            <div className="border-t border-slate-800 p-6 space-y-6">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                <input type="text" placeholder="CERCA SQUADRA..." className="bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase focus:border-yellow-500 outline-none w-full transition-all" onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
-            ))}
-          </div>
-        </section>
 
-        {/* --- TABELLONE --- */}
-        <section>
-          <div className="flex items-center gap-3 mb-6">
-            <Trophy className="text-blue-500" size={24} />
-            <h2 className="text-2xl font-black uppercase italic tracking-tight">Tabellone</h2>
-          </div>
-          <div className="bg-slate-900 p-8 rounded-[3rem] border border-slate-800 shadow-2xl space-y-6">
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <select id="q_team" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black text-xs uppercase outline-none focus:border-blue-500 cursor-pointer">
-                <option value="">SQUADRA...</option>
-                {TEAMS_2026.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <select id="q_stage" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black text-xs uppercase outline-none focus:border-blue-500 cursor-pointer">
-                {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </select>
-            </div>
-            <button onClick={saveQualif} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 shadow-xl hover:bg-blue-500 transition-colors">
-              CONFERMA QUALIFICATA
-            </button>
-            
-            <div className="mt-10 space-y-6">
-              {STAGES.map((stage) => {
-                // FIX: L'Admin ora filtra usando il Normalizzatore! Così i vecchi dati sballati appaiono.
-                const teamsInThisStage = officialBracket.filter(o => normalizeStage(o.stage) === stage.id);
-                if (teamsInThisStage.length === 0) return null;
-
-                return (
-                  <div key={stage.id} className="bg-slate-950/50 p-5 rounded-2xl border border-slate-800/80">
-                    <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">
-                      {stage.label.split(' ')[0]}
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {teamsInThisStage.map(o => (
-                        <div key={o.id} className="bg-slate-900 border border-slate-700 px-3 py-2 rounded-xl flex items-center gap-3 shadow-md">
-                          <span className="text-[11px] font-black uppercase text-white">{o.team_name}</span>
-                          <button onClick={() => deleteQualif(o.id)} className="p-1 hover:bg-rose-500/20 rounded-md transition-colors" title="Elimina">
-                            <Trash2 size={14} className="text-rose-500"/>
-                          </button>
-                        </div>
-                      ))}
+              <div className="grid gap-3">
+                {matches.filter(m => m.home_team.toLowerCase().includes(searchTerm.toLowerCase()) || m.away_team.toLowerCase().includes(searchTerm.toLowerCase())).map(m => {
+                  const homeFlag = getFlagCode(m.home_team);
+                  const awayFlag = getFlagCode(m.away_team);
+                  const hasResult = m.is_finished && m.home_score_final !== null && m.away_score_final !== null;
+                  return (
+                  <div key={m.id} className={`bg-slate-900 p-4 rounded-3xl border transition-all flex flex-col sm:flex-row items-center gap-4 shadow-md ${hasResult ? 'border-emerald-500/20' : 'border-slate-800'}`}>
+                    <div className="flex sm:flex-col items-center justify-between w-full sm:w-auto gap-2">
+                      <span className="text-[10px] text-slate-600 uppercase font-black italic">#{m.id}</span>
+                      {hasResult && <span className="text-[8px] text-emerald-400 font-black uppercase italic bg-emerald-500/10 px-2 py-0.5 rounded-full">FINITA</span>}
                     </div>
+                    <div className="flex-1 flex items-center justify-center gap-4 w-full">
+                      <div className="flex flex-1 items-center justify-end gap-2 text-right">
+                        <span className="font-black uppercase italic text-xs hidden sm:block truncate">{m.home_team}</span>
+                        {homeFlag ? <img src={`https://flagcdn.com/w40/${homeFlag}.png`} className="w-6 h-auto rounded-sm shadow-md" /> : <Shield size={10} className="text-slate-600"/>}
+                        <input id={`h-${m.id}`} type="number" defaultValue={m.home_score_final ?? ''} className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none" />
+                      </div>
+                      <span className="text-slate-700 font-black">-</span>
+                      <div className="flex flex-1 items-center justify-start gap-2 text-left">
+                        <input id={`a-${m.id}`} type="number" defaultValue={m.away_score_final ?? ''} className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none" />
+                        {awayFlag ? <img src={`https://flagcdn.com/w40/${awayFlag}.png`} className="w-6 h-auto rounded-sm shadow-md" /> : <Shield size={10} className="text-slate-600"/>}
+                        <span className="font-black uppercase italic text-xs hidden sm:block truncate">{m.away_team}</span>
+                      </div>
+                    </div>
+                    <button onClick={() => updateScore(m.id)} className={`w-full sm:w-auto px-4 py-3 rounded-xl font-black uppercase text-[10px] italic transition-all flex items-center justify-center gap-2 ${hasResult ? 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-slate-950 cursor-pointer' : 'bg-yellow-500 text-slate-950 hover:bg-yellow-400 cursor-pointer'}`}>
+                       {hasResult ? <CheckCircle2 size={14} /> : <Zap size={14} />}
+                       <span>{hasResult ? 'AGGIORNA' : 'SALVA'}</span>
+                    </button>
                   </div>
-                );
-              })}
-              
-              {officialBracket.length === 0 && (
-                <div className="text-center p-6 border border-dashed border-slate-800 rounded-2xl">
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Nessuna squadra inserita</p>
-                </div>
-              )}
+                )})}
+              </div>
             </div>
-
-          </div>
+          )}
         </section>
 
-        {/* --- BONUS --- */}
-        <section>
-          <div className="flex items-center gap-3 mb-6">
-            <Star className="text-purple-500" size={24} />
-            <h2 className="text-2xl font-black uppercase italic tracking-tight">Super Bonus Ufficiali</h2>
-          </div>
-          <form onSubmit={saveBonuses} className="bg-slate-900 p-8 rounded-[3rem] space-y-5 border border-slate-800 shadow-2xl">
-            <input value={bonusData.red} onChange={(e) => setBonusData({...bonusData, red: e.target.value})} type="number" placeholder="ROSSI TOTALI UFFICIALI" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black text-xl text-purple-400 outline-none" />
-            <input value={bonusData.top} onChange={(e) => setBonusData({...bonusData, top: e.target.value})} placeholder="CAPOCANNONIERE UFFICIALE" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black uppercase outline-none" />
-            <input value={bonusData.high} onChange={(e) => setBonusData({...bonusData, high: e.target.value})} placeholder="MATCH PIÙ GOL UFFICIALE" className="w-full bg-slate-950 border border-slate-800 p-5 rounded-2xl font-black uppercase outline-none" />
-            <button type="submit" className="w-full bg-purple-600 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 shadow-xl">PUBBLICA VERITÀ BONUS</button>
-          </form>
+        {/* --- 3. FASE FINALE --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button onClick={() => toggleSection('tabellone')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
+            <div className="flex items-center gap-3">
+              <Trophy className="text-blue-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">Fase Finale</h2>
+            </div>
+            {openSection.tabellone ? <ChevronUp className="text-slate-500" /> : <ChevronDown className="text-slate-500" />}
+          </button>
+          
+          {openSection.tabellone && (
+            <div className="border-t border-slate-800 p-6 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <select id="q_team" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-xs uppercase outline-none focus:border-blue-500">
+                  <option value="">SQUADRA...</option>
+                  {TEAMS_2026.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <select id="q_stage" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-xs uppercase outline-none focus:border-blue-500">
+                  {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </div>
+              <button onClick={saveQualif} className="w-full bg-blue-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest active:scale-95 shadow-xl">CONFERMA QUALIFICATA</button>
+              
+              <div className="mt-8 space-y-4">
+                {STAGES.map((stage) => {
+                  const teamsInThisStage = officialBracket.filter(o => normalizeStage(o.stage) === stage.id);
+                  if (teamsInThisStage.length === 0) return null;
+                  return (
+                    <div key={stage.id} className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/80">
+                      <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">{stage.label.split(' ')[0]}</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {teamsInThisStage.map(o => {
+                          const flag = getFlagCode(o.team_name);
+                          return (
+                            <div key={o.id} className="bg-slate-900 border border-slate-700 pl-2 pr-1 py-1.5 rounded-lg flex items-center gap-2 shadow-sm">
+                              {flag && <img src={`https://flagcdn.com/w20/${flag}.png`} className="w-4 h-auto rounded-sm" />}
+                              <span className="text-[10px] font-black uppercase text-white">{o.team_name}</span>
+                              <button onClick={() => deleteQualif(o.id)} className="p-1 hover:bg-rose-500/20 rounded ml-1 transition-colors"><Trash2 size={12} className="text-rose-500"/></button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* --- 4. BONUS --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button onClick={() => toggleSection('bonus')} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
+            <div className="flex items-center gap-3">
+              <Star className="text-purple-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">Bonus</h2>
+            </div>
+            {openSection.bonus ? <ChevronUp className="text-slate-500" /> : <ChevronDown className="text-slate-500" />}
+          </button>
+          
+          {openSection.bonus && (
+            <div className="border-t border-slate-800 p-6">
+              <form onSubmit={saveBonuses} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">Rossi Totali</span>
+                    <input value={bonusData.red} onChange={(e) => setBonusData({...bonusData, red: e.target.value})} type="number" placeholder="Inserisci Numero" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">Rigori Totali</span>
+                    <input value={bonusData.penalties} onChange={(e) => setBonusData({...bonusData, penalties: e.target.value})} type="number" placeholder="Inserisci Numero" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">Autogol Totali</span>
+                    <input value={bonusData.own_goals} onChange={(e) => setBonusData({...bonusData, own_goals: e.target.value})} type="number" placeholder="Inserisci Numero" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">Capocannoniere</span>
+                    <input value={bonusData.top} onChange={(e) => setBonusData({...bonusData, top: e.target.value})} placeholder="Es. Mbappé" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">MVP Mondiale</span>
+                    <input value={bonusData.mvp_world_cup} onChange={(e) => setBonusData({...bonusData, mvp_world_cup: e.target.value})} placeholder="Es. Lamine Yamal" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-500 ml-2">Partita con più gol</span>
+                  <select value={bonusData.high} onChange={(e) => setBonusData({...bonusData, high: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none text-sm">
+                    <option value="">Seleziona Partita...</option>
+                    {matches.filter(m => !m.home_team.includes('TBD')).map(m => (
+                      <option key={m.id} value={`${m.home_team} - ${m.away_team}`}>{m.home_team} - {m.away_team}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">Girone + Gol</span>
+                    <select value={bonusData.high_group} onChange={(e) => setBonusData({...bonusData, high_group: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none">
+                      <option value="">Seleziona Girone...</option>
+                      {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">Girone - Gol</span>
+                    <select value={bonusData.low_group} onChange={(e) => setBonusData({...bonusData, low_group: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none">
+                      <option value="">Seleziona Girone...</option>
+                      {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <button type="submit" className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-all">SALVA BONUS</button>
+              </form>
+            </div>
+          )}
         </section>
 
       </div>

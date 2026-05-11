@@ -31,7 +31,6 @@ export default function LeaderboardPage() {
     try {
       setLoading(true);
       
-      // FIX ARCHITETTURA: Puntiamo alle due nuove tabelle separate
       const [prf, mtc, prd, brk, off, offBon, usrBon] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('matches').select('*'),
@@ -44,7 +43,6 @@ export default function LeaderboardPage() {
 
       if (!prf.data) return;
       
-      // I risultati ufficiali dell'Admin
       const officialBonus = offBon.data;
 
       const calculatedProfiles = prf.data.map((user) => {
@@ -62,7 +60,6 @@ export default function LeaderboardPage() {
             if (ph === mh && pa === ma) gironiPoints += 10;
             else if (pRes === mRes && (ph === mh || pa === ma)) gironiPoints += 6;
             else if (pRes === mRes) gironiPoints += 4;
-            // Bonus consolazione: un risultato azzeccato ma segno sbagliato
             else if (ph === mh || pa === ma) gironiPoints += 2;
           }
         });
@@ -79,15 +76,35 @@ export default function LeaderboardPage() {
           if (isCorrect) bracketPoints += STAGE_POINTS[normalizedUserStage] || 0;
         });
 
-        // 3. PUNTI BONUS
+        // 3. PUNTI BONUS AGGIORNATO A 8 VARIABILI (10 PUNTI CIASCUNO)
         let bonusPoints = 0;
-        // Peschiamo dalla tabella delle risposte utenti
         const userBonus = usrBon.data?.find(b => b.user_id === user.id);
         
         if (userBonus && officialBonus) {
-          if (officialBonus.total_red_cards > 0 && userBonus.total_red_cards === officialBonus.total_red_cards) bonusPoints += 10;
-          if (officialBonus.top_scorer && userBonus.top_scorer?.trim().toLowerCase() === officialBonus.top_scorer.trim().toLowerCase()) bonusPoints += 10;
-          if (officialBonus.high_scoring_match && userBonus.high_scoring_match?.trim().toLowerCase() === officialBonus.high_scoring_match.trim().toLowerCase()) bonusPoints += 10;
+          if (officialBonus.total_red_cards != null && userBonus.total_red_cards != null) {
+            if (String(userBonus.total_red_cards) === String(officialBonus.total_red_cards)) bonusPoints += 10;
+          }
+          if (officialBonus.total_penalties != null && userBonus.total_penalties != null) {
+            if (String(userBonus.total_penalties) === String(officialBonus.total_penalties)) bonusPoints += 10;
+          }
+          if (officialBonus.total_own_goals != null && userBonus.total_own_goals != null) {
+            if (String(userBonus.total_own_goals) === String(officialBonus.total_own_goals)) bonusPoints += 10;
+          }
+          if (officialBonus.top_scorer?.trim() && userBonus.top_scorer?.trim()) {
+            if (userBonus.top_scorer.trim().toLowerCase() === officialBonus.top_scorer.trim().toLowerCase()) bonusPoints += 10;
+          }
+          if (officialBonus.mvp_world_cup?.trim() && userBonus.mvp_world_cup?.trim()) {
+            if (userBonus.mvp_world_cup.trim().toLowerCase() === officialBonus.mvp_world_cup.trim().toLowerCase()) bonusPoints += 10;
+          }
+          if (officialBonus.high_scoring_match?.trim() && userBonus.high_scoring_match?.trim()) {
+            if (userBonus.high_scoring_match.trim().toLowerCase() === officialBonus.high_scoring_match.trim().toLowerCase()) bonusPoints += 10;
+          }
+          if (officialBonus.highest_scoring_group?.trim() && userBonus.highest_scoring_group?.trim()) {
+            if (userBonus.highest_scoring_group.trim().toLowerCase() === officialBonus.highest_scoring_group.trim().toLowerCase()) bonusPoints += 10;
+          }
+          if (officialBonus.lowest_scoring_group?.trim() && userBonus.lowest_scoring_group?.trim()) {
+            if (userBonus.lowest_scoring_group.trim().toLowerCase() === officialBonus.lowest_scoring_group.trim().toLowerCase()) bonusPoints += 10;
+          }
         }
 
         const total = gironiPoints + bracketPoints + bonusPoints;
@@ -99,7 +116,6 @@ export default function LeaderboardPage() {
 
       setLeaderboard(ranked);
 
-      // Sincronizzazione Silenziosa Database
       ranked.forEach(async (u) => {
         if (u.points !== u.db_points_backup) { 
           await supabase.from('profiles').update({
@@ -141,14 +157,13 @@ export default function LeaderboardPage() {
       </header>
 
       <div className="max-w-3xl mx-auto">
-        {/* Header Colonne Leggibile */}
-        <div className="flex px-6 mb-4 text-[9px] font-black text-slate-600 uppercase tracking-widest italic">
+        <div className="flex px-4 sm:px-6 mb-4 text-[8px] sm:text-[9px] font-black text-slate-600 uppercase tracking-widest italic">
           <div className="flex-1">Giocatore</div>
-          <div className="flex gap-6 md:gap-10 pr-2">
-            <div className="w-8 text-center">Gironi</div>
-            <div className="w-8 text-center">FF</div>
-            <div className="w-8 text-center">Bonus</div>
-            <div className="w-12 text-center text-yellow-500 border-b border-yellow-500/20">Tot</div>
+          <div className="flex gap-3 sm:gap-6 md:gap-10 pr-2">
+            <div className="w-6 sm:w-8 text-center"><span className="sm:hidden">Gir</span><span className="hidden sm:inline">Gironi</span></div>
+            <div className="w-6 sm:w-8 text-center">FF</div>
+            <div className="w-6 sm:w-8 text-center"><span className="sm:hidden">Bon</span><span className="hidden sm:inline">Bonus</span></div>
+            <div className="w-10 sm:w-12 text-center text-yellow-500 border-b border-yellow-500/20">Tot</div>
           </div>
         </div>
 
@@ -156,41 +171,43 @@ export default function LeaderboardPage() {
           {leaderboard.map((player) => (
             <div 
               key={player.id} 
-              className={`flex items-center p-5 rounded-[2rem] border transition-all ${
+              className={`flex items-center p-4 sm:p-5 rounded-[2rem] border transition-all ${
                 player.ranking === 1 
                 ? 'bg-yellow-500/10 border-yellow-500/40 shadow-2xl shadow-yellow-500/5 scale-[1.02]' 
                 : 'bg-slate-900/40 border-slate-800/60'
               }`}
             >
-              {/* Rank & Info */}
-              <div className="flex-1 flex items-center gap-4 min-w-0">
-                <div className="w-8 flex justify-center shrink-0">
+              {/* FIX: min-w-0 forzato per attivare il truncate sui figli */}
+              <div className="flex-1 flex items-center gap-3 sm:gap-4 min-w-0">
+                <div className="w-6 sm:w-8 flex justify-center shrink-0">
                   {getRankIcon(player.ranking)}
                 </div>
-                <div className="truncate">
-                  <p className="font-black uppercase italic text-sm md:text-base tracking-tight leading-none mb-1">
+                
+                <div className="flex flex-col min-w-0 flex-1">
+                  {/* FIX: truncate direttamente sul p, w-full assicura che usi tutto lo spazio flex disponibile */}
+                  <p className="font-black uppercase italic text-xs sm:text-sm md:text-base tracking-tight leading-none mb-1 truncate w-full">
                     {player.username}
                   </p>
                   {player.is_paid ? (
-                    <span className="text-[7px] font-black text-emerald-500 uppercase tracking-widest">Quota OK ✓</span>
+                    <span className="text-[6px] sm:text-[7px] font-black text-emerald-500 uppercase tracking-widest">Quota OK ✓</span>
                   ) : (
-                    <span className="text-[7px] font-black text-rose-500 uppercase tracking-widest animate-pulse">Manca Quota!</span>
+                    <span className="text-[6px] sm:text-[7px] font-black text-rose-500 uppercase tracking-widest animate-pulse">Manca Quota!</span>
                   )}
                 </div>
               </div>
 
-              {/* Punteggi Dettagliati */}
-              <div className="flex items-center gap-6 md:gap-10 shrink-0 ml-2">
-                <div className="w-8 text-center text-[10px] md:text-xs font-bold text-slate-500">
+              {/* FIX: gap adattivo per i dispositivi */}
+              <div className="flex items-center gap-3 sm:gap-6 md:gap-10 shrink-0 ml-2">
+                <div className="w-6 sm:w-8 text-center text-[9px] sm:text-[10px] md:text-xs font-bold text-slate-500">
                   {player.points_groups}
                 </div>
-                <div className="w-8 text-center text-[10px] md:text-xs font-bold text-slate-500">
+                <div className="w-6 sm:w-8 text-center text-[9px] sm:text-[10px] md:text-xs font-bold text-slate-500">
                   {player.points_bracket}
                 </div>
-                <div className={`w-8 text-center text-[10px] md:text-xs font-bold ${player.points_bonus > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>
+                <div className={`w-6 sm:w-8 text-center text-[9px] sm:text-[10px] md:text-xs font-bold ${player.points_bonus > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>
                   {player.points_bonus}
                 </div>
-                <div className={`w-12 text-center font-black italic text-xl md:text-3xl ${
+                <div className={`w-10 sm:w-12 text-center font-black italic text-lg sm:text-xl md:text-3xl ${
                   player.ranking === 1 ? 'text-yellow-500' : 'text-white'
                 }`}>
                   {player.points}
