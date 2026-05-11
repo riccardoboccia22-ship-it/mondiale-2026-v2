@@ -111,9 +111,7 @@ export default function MatchesPage() {
   const [saving, setSaving] = useState(false);
 
   const [predictions, setPredictions] = useState<any>({});
-  // NUOVO STATO: La "fotografia" del database
   const [originalPredictions, setOriginalPredictions] = useState<any>({});
-
   const [openGroups, setOpenGroups] = useState<{ [key: string]: boolean }>({});
 
   const router = useRouter();
@@ -149,7 +147,6 @@ export default function MatchesPage() {
             };
           });
           setPredictions(predMap);
-          // Salviamo una copia per calcolare le differenze
           setOriginalPredictions(JSON.parse(JSON.stringify(predMap)));
         }
       }
@@ -168,6 +165,16 @@ export default function MatchesPage() {
   };
 
   const getFlagCode = (team: string) => flagMap[team?.toLowerCase().trim()];
+
+  // FUNZIONE PER ACCORCIARE I NOMI LUNGHI SOLO NELLA UI
+  const formatTeamName = (teamName: string) => {
+    if (!teamName) return '';
+    const lowerName = teamName.toLowerCase().trim();
+    if (lowerName === 'repubblica democratica del congo') return 'R. D. Congo';
+    if (lowerName === 'bosnia ed erzegovina') return 'Bosnia';
+    if (lowerName === 'bosnia erzegovina') return 'Bosnia';
+    return teamName;
+  };
 
   const handleInputChange = (
     matchId: number,
@@ -207,7 +214,6 @@ export default function MatchesPage() {
 
         if (error) throw error;
 
-        // Aggiorna l'interfaccia rimuovendo i valori e la foto originale
         const newPredictions = { ...predictions };
         const newOriginals = { ...originalPredictions };
         matchIds.forEach((id) => {
@@ -239,7 +245,6 @@ export default function MatchesPage() {
       return;
     }
 
-    // 1. Calcoliamo le DIFFERENZE (Nuovi o Modificati)
     let changedCount = 0;
     const rowsToUpsert = Object.entries(predictions)
       .filter(
@@ -251,7 +256,6 @@ export default function MatchesPage() {
       )
       .map(([matchId, val]: any) => {
         const init = originalPredictions[matchId];
-        // Se non c'era, o se i numeri sono diversi, è un cambiamento
         if (
           !init ||
           String(init.home) !== String(val.home) ||
@@ -267,7 +271,6 @@ export default function MatchesPage() {
         };
       });
 
-    // 2. Calcoliamo se qualcosa è stato eliminato
     let deletedCount = 0;
     Object.keys(originalPredictions).forEach((matchId) => {
       const val = predictions[matchId];
@@ -282,14 +285,12 @@ export default function MatchesPage() {
       }
     });
 
-    // Se non è cambiato nulla, evitiamo richieste inutili al database
     if (changedCount === 0 && deletedCount === 0) {
       toast('Nessuna modifica da salvare.', { icon: '👍' });
       setSaving(false);
       return;
     }
 
-    // 3. Eseguiamo il salvataggio reale
     try {
       await supabase.from('predictions').delete().eq('user_id', user.id);
 
@@ -299,7 +300,6 @@ export default function MatchesPage() {
           .insert(rowsToUpsert);
         if (error) throw error;
 
-        // Aggiorniamo la "fotografia" così non ce li ricalcola la prossima volta
         const newOriginals: any = {};
         rowsToUpsert.forEach((r) => {
           newOriginals[r.match_id] = {
@@ -309,7 +309,6 @@ export default function MatchesPage() {
         });
         setOriginalPredictions(newOriginals);
 
-        // Messaggi intelligenti
         if (changedCount > 0 && deletedCount > 0) {
           toast.success(
             `${changedCount} salvati e ${deletedCount} rimossi! 🏆`
@@ -458,7 +457,7 @@ export default function MatchesPage() {
                         return (
                           <div
                             key={match.id}
-                            className="bg-slate-950/50 border border-slate-800/50 rounded-3xl p-5 hover:border-slate-700 transition-all"
+                            className="bg-slate-950/50 border border-slate-800/50 rounded-3xl p-4 sm:p-5 hover:border-slate-700 transition-all flex flex-col justify-between"
                           >
                             <div className="flex justify-between text-[8px] font-black uppercase text-slate-600 mb-4 italic">
                               <span>
@@ -475,9 +474,9 @@ export default function MatchesPage() {
                               <span>MATCH #{match.id}</span>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center justify-between gap-2 w-full">
                               {/* Casa */}
-                              <div className="flex-1 flex flex-col items-end gap-1 text-right">
+                              <div className="flex-1 flex flex-col items-end gap-1 text-right min-w-0">
                                 {hFlag ? (
                                   <img
                                     src={`https://flagcdn.com/w80/${hFlag}.png`}
@@ -490,20 +489,20 @@ export default function MatchesPage() {
                                     className="text-slate-800"
                                   />
                                 )}
-                                <span className="font-black text-[10px] uppercase italic text-slate-200 truncate w-full">
-                                  {match.home_team}
+                                <span className="font-black text-[9px] sm:text-[10px] uppercase italic text-slate-200 truncate w-full">
+                                  {formatTeamName(match.home_team)}
                                 </span>
                               </div>
 
                               {/* Input */}
-                              <div className="flex flex-col items-center gap-1">
+                              <div className="flex flex-col items-center gap-1 shrink-0 px-2">
                                 <div className="flex items-center gap-1.5">
                                   <input
                                     type="number"
                                     value={predictions[match.id]?.home ?? ''}
                                     disabled={isExpired}
                                     placeholder="-"
-                                    className="w-11 h-11 bg-slate-900 border border-slate-800 rounded-xl text-center font-black text-yellow-500 text-lg focus:border-yellow-500 outline-none transition-all disabled:opacity-30"
+                                    className="w-10 h-10 sm:w-11 sm:h-11 bg-slate-900 border border-slate-800 rounded-xl text-center font-black text-yellow-500 text-lg focus:border-yellow-500 outline-none transition-all disabled:opacity-30"
                                     onChange={(e) =>
                                       handleInputChange(
                                         match.id,
@@ -520,7 +519,7 @@ export default function MatchesPage() {
                                     value={predictions[match.id]?.away ?? ''}
                                     disabled={isExpired}
                                     placeholder="-"
-                                    className="w-11 h-11 bg-slate-900 border border-slate-800 rounded-xl text-center font-black text-yellow-500 text-lg focus:border-yellow-500 outline-none transition-all disabled:opacity-30"
+                                    className="w-10 h-10 sm:w-11 sm:h-11 bg-slate-900 border border-slate-800 rounded-xl text-center font-black text-yellow-500 text-lg focus:border-yellow-500 outline-none transition-all disabled:opacity-30"
                                     onChange={(e) =>
                                       handleInputChange(
                                         match.id,
@@ -531,7 +530,7 @@ export default function MatchesPage() {
                                   />
                                 </div>
                                 {isFinished && (
-                                  <span className="text-[7px] font-black text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10">
+                                  <span className="text-[7px] font-black text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10 whitespace-nowrap mt-1">
                                     FINALE: {match.home_score_final}-
                                     {match.away_score_final}
                                   </span>
@@ -539,7 +538,7 @@ export default function MatchesPage() {
                               </div>
 
                               {/* Trasferta */}
-                              <div className="flex-1 flex flex-col items-start gap-1 text-left">
+                              <div className="flex-1 flex flex-col items-start gap-1 text-left min-w-0">
                                 {aFlag ? (
                                   <img
                                     src={`https://flagcdn.com/w80/${aFlag}.png`}
@@ -552,8 +551,8 @@ export default function MatchesPage() {
                                     className="text-slate-800"
                                   />
                                 )}
-                                <span className="font-black text-[10px] uppercase italic text-slate-200 truncate w-full">
-                                  {match.away_team}
+                                <span className="font-black text-[9px] sm:text-[10px] uppercase italic text-slate-200 truncate w-full">
+                                  {formatTeamName(match.away_team)}
                                 </span>
                               </div>
                             </div>
