@@ -79,10 +79,15 @@ export default function AdminPage() {
     }
   }
 
+  // FUNZIONE DI CALCOLO UNIFICATA (Chiamata da ogni tasto SALVA)
   const syncLeaderboard = async (isManual = true) => {
     if (isManual && !window.confirm("Ricalcolare la classifica?")) return;
+    
     setSyncing(true);
+    const syncToast = !isManual ? toast.loading("Sincronizzazione classifica...") : null;
+
     try {
+      // Peschiamo i dati freschi dopo il salvataggio
       const [{ data: profs }, { data: allMatches }, { data: allPreds }, { data: offBonuses }, { data: userBonuses }, { data: offBracket }, { data: userBrackets }] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('matches').select('*').eq('is_finished', true),
@@ -95,6 +100,8 @@ export default function AdminPage() {
 
       const updates = profs!.map(profile => {
         let pGroups = 0; let pBracket = 0; let pBonus = 0;
+        
+        // Calcolo Partite
         const uPreds = allPreds?.filter(p => p.user_id === profile.id) || [];
         uPreds.forEach(pred => {
           const m = allMatches?.find(m => m.id === pred.match_id);
@@ -109,11 +116,15 @@ export default function AdminPage() {
             else if (ph === mh || pa === ma) pGroups += 2;
           }
         });
+
+        // Calcolo Tabellone
         userBrackets?.filter(b => b.user_id === profile.id).forEach(ub => {
           const uStg = normalizeStage(ub.stage);
           if (offBracket?.some(ob => normalizeStage(ob.stage) === uStg && ob.team_name.toLowerCase().trim() === ub.team_name.toLowerCase().trim()))
             pBracket += STAGES.find(s => s.id === uStg)?.pts || 0;
         });
+
+        // Calcolo Bonus
         const ub = userBonuses?.find(b => b.user_id === profile.id);
         if (ub && offBonuses) {
           ['total_red_cards', 'total_penalties', 'total_own_goals', 'top_scorer', 'mvp_world_cup', 'best_goalkeeper', 'high_scoring_match', 'highest_scoring_group', 'lowest_scoring_group'].forEach(k => {
@@ -125,17 +136,34 @@ export default function AdminPage() {
 
       const sorted = [...updates].sort((a, b) => b.points - a.points);
       const ranked = sorted.map((u, i) => ({ ...u, ranking: (i + 1).toString() }));
+      
       await supabase.from('profiles').upsert(ranked, { onConflict: 'id' });
-      if (isManual) toast.success("Classifica sincronizzata!");
+      
+      if (syncToast) toast.dismiss(syncToast);
+      toast.success("Classifica aggiornata! 🏆");
       fetchData();
-    } catch (err: any) { toast.error(err.message); } finally { setSyncing(false); }
+    } catch (err: any) { 
+      if (syncToast) toast.dismiss(syncToast);
+      toast.error("Errore ricalcolo: " + err.message); 
+    } finally { 
+      setSyncing(false); 
+    }
   };
 
   const updateScore = async (id: number) => {
     const h = (document.getElementById(`h-${id}`) as HTMLInputElement).value;
     const a = (document.getElementById(`a-${id}`) as HTMLInputElement).value;
-    await supabase.from('matches').update({ home_score_final: h !== '' ? parseInt(h) : null, away_score_final: a !== '' ? parseInt(a) : null, is_finished: h !== '' && a !== '' }).eq('id', id);
-    toast.success("Salvato"); await syncLeaderboard(false);
+    const { error } = await supabase.from('matches').update({ 
+      home_score_final: h !== '' ? parseInt(h) : null, 
+      away_score_final: a !== '' ? parseInt(a) : null, 
+      is_finished: h !== '' && a !== '' 
+    }).eq('id', id);
+    
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Risultato salvato");
+      await syncLeaderboard(false); // <--- PARTE IL RICALCOLO AUTO
+    }
   };
 
   const saveBonuses = async (e: React.FormEvent) => {
@@ -152,22 +180,32 @@ export default function AdminPage() {
       highest_scoring_group: bonusData.high_group || null,
       lowest_scoring_group: bonusData.low_group || null
     };
-    await supabase.from('official_bonuses').upsert(payload, { onConflict: 'id' });
-    toast.success("Bonus aggiornati"); await syncLeaderboard(false);
+    const { error } = await supabase.from('official_bonuses').upsert(payload, { onConflict: 'id' });
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Bonus salvati");
+      await syncLeaderboard(false); // <--- PARTE IL RICALCOLO AUTO
+    }
   };
 
   const saveQualif = async () => {
     const team = (document.getElementById('q_team') as HTMLSelectElement).value;
     const stage = (document.getElementById('q_stage') as HTMLSelectElement).value;
-    if (!team || !stage) return toast.error('Mancano dati!');
+    if (!team || !stage) return toast.error('Seleziona i dati!');
     const { error } = await supabase.from('official_bracket').insert([{ stage, team_name: team }]);
     if (error) toast.error(error.message);
-    else { toast.success('Squadra registrata!'); await syncLeaderboard(false); }
+    else {
+      toast.success('Squadra registrata');
+      await syncLeaderboard(false); // <--- PARTE IL RICALCOLO AUTO
+    }
   };
 
   const deleteQualif = async (id: any) => {
     const { error } = await supabase.from('official_bracket').delete().eq('id', id);
-    if (!error) { toast.success('Rimosso!'); await syncLeaderboard(false); }
+    if (!error) {
+      toast.success('Squadra rimossa');
+      await syncLeaderboard(false); // <--- PARTE IL RICALCOLO AUTO
+    }
   };
 
   const togglePayment = async (userId: string, status: boolean) => {
@@ -195,12 +233,12 @@ export default function AdminPage() {
     <div className="min-h-screen bg-slate-950 text-white p-4 pb-32 font-sans">
       <header className="text-center mb-12 pt-6">
         <h1 className="text-5xl font-black text-yellow-500 italic uppercase tracking-tighter mb-6">Control Tower</h1>
-        <button onClick={() => syncLeaderboard(true)} disabled={syncing} className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95">
+        <button onClick={() => syncLeaderboard(true)} disabled={syncing} className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all">
           <RefreshCw size={18} className={syncing ? "animate-spin" : ""} /> {syncing ? 'Sincronizzazione...' : 'Sincronizza Classifica'}
         </button>
       </header>
 
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-3xl mx-auto space-y-6 text-left">
         {/* ISCRIZIONI */}
         <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
           <button onClick={() => setOpenSection({...openSection, iscrizioni: !openSection.iscrizioni})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
@@ -212,10 +250,10 @@ export default function AdminPage() {
               {profiles.map(p => (
                 <div key={p.id} className="p-4 flex items-center justify-between">
                   <div>
-                    <p className="font-black text-sm uppercase italic">{p.username} <span className="text-yellow-500">#{p.ranking || '--'}</span></p>
-                    <p className="text-[9px] text-slate-500 mt-1 uppercase">{p.points || 0} PT ({p.points_groups}G + {p.points_bracket}F + {p.points_bonus}B)</p>
+                    <p className="font-black text-sm uppercase italic">{p.username} <span className="text-yellow-500 ml-1">#{p.ranking || '--'}</span></p>
+                    <p className="text-[9px] text-slate-500 uppercase">{p.points || 0} PT ({p.points_groups}G + {p.points_bracket}F + {p.points_bonus}B)</p>
                   </div>
-                  <button onClick={() => togglePayment(p.id, p.is_paid)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${p.is_paid ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-rose-500 border border-rose-500/30'}`}>{p.is_paid ? 'PAGATO' : 'DA PAGARE'}</button>
+                  <button onClick={() => togglePayment(p.id, p.is_paid)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase ${p.is_paid ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-rose-500 border border-rose-500/30'}`}>{p.is_paid ? 'PAGATO' : 'DA PAGARE'}</button>
                 </div>
               ))}
             </div>
@@ -225,12 +263,12 @@ export default function AdminPage() {
         {/* FASE A GIRONI */}
         <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
           <button onClick={() => setOpenSection({...openSection, risultati: !openSection.risultati})} className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all">
-            <div className="flex items-center gap-3"><Zap className="text-yellow-500" size={24} /><h2 className="text-xl font-black uppercase italic">Fase a Gironi</h2></div>
+            <div className="flex items-center gap-3"><Zap className="text-yellow-500" size={24} /><h2 className="text-xl font-black uppercase italic">Risultati Gironi</h2></div>
             {openSection.risultati ? <ChevronUp /> : <ChevronDown />}
           </button>
           {openSection.risultati && (
             <div className="border-t border-slate-800 p-6 space-y-4">
-              <input type="text" placeholder="CERCA SQUADRA..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-black uppercase outline-none focus:border-yellow-500 transition-all" onChange={(e) => setSearchTerm(e.target.value)} />
+              <input type="text" placeholder="CERCA SQUADRA..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-black uppercase outline-none focus:border-yellow-500" onChange={(e) => setSearchTerm(e.target.value)} />
               <div className="grid gap-3">
                 {matches.filter(m => m.home_team.toLowerCase().includes(searchTerm.toLowerCase()) || m.away_team.toLowerCase().includes(searchTerm.toLowerCase())).map(m => (
                   <div key={m.id} className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex items-center gap-4">
@@ -267,7 +305,7 @@ export default function AdminPage() {
                   {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
               </div>
-              <button onClick={saveQualif} className="w-full bg-blue-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest active:scale-95 shadow-xl transition-all">CONFERMA QUALIFICATA</button>
+              <button onClick={saveQualif} className="w-full bg-blue-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all">CONFERMA QUALIFICATA</button>
               <div className="space-y-4 mt-6">
                 {STAGES.map((stg) => {
                   const items = officialBracket.filter(o => normalizeStage(o.stage) === stg.id);
@@ -312,11 +350,7 @@ export default function AdminPage() {
                   <option value="">PARTITA + GOL...</option>
                   {matches.map(m => <option key={m.id} value={`${m.home_team} - ${m.away_team}`}>{m.home_team} - {m.away_team}</option>)}
                 </select>
-                <div className="grid grid-cols-2 gap-4">
-                   <select value={bonusData.high_group} onChange={(e) => setBonusData({...bonusData, high_group: e.target.value})} className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none focus:border-purple-500 transition-all"><option value="">GIRONE + GOL</option>{GROUPS.map(g => <option key={g} value={g}>{g}</option>)}</select>
-                   <select value={bonusData.low_group} onChange={(e) => setBonusData({...bonusData, low_group: e.target.value})} className="bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none focus:border-purple-500 transition-all"><option value="">GIRONE - GOL</option>{GROUPS.map(g => <option key={g} value={g}>{g}</option>)}</select>
-                </div>
-                <button type="submit" className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs active:scale-95 transition-all shadow-xl">SALVA BONUS</button>
+                <button type="submit" className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs active:scale-95 transition-all">SALVA BONUS</button>
               </form>
             </div>
           )}
@@ -331,28 +365,16 @@ export default function AdminPage() {
           {openSection.statistiche && (
             <div className="border-t border-slate-800 p-6 space-y-6 bg-slate-950/30">
               <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
-                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Rossi Avg</p>
-                  <p className="text-2xl font-black text-cyan-400">{getAverage('total_red_cards')}</p>
-                </div>
-                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
-                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Rigori Avg</p>
-                  <p className="text-2xl font-black text-cyan-400">{getAverage('total_penalties')}</p>
-                </div>
-                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
-                  <p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Autogol Avg</p>
-                  <p className="text-2xl font-black text-cyan-400">{getAverage('total_own_goals')}</p>
-                </div>
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md"><p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Rossi Avg</p><p className="text-2xl font-black text-cyan-400">{getAverage('total_red_cards')}</p></div>
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md"><p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Rigori Avg</p><p className="text-2xl font-black text-cyan-400">{getAverage('total_penalties')}</p></div>
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md"><p className="text-[8px] font-black text-slate-500 mb-1 uppercase tracking-tighter">Autogol Avg</p><p className="text-2xl font-black text-cyan-400">{getAverage('total_own_goals')}</p></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[ { label: 'Capocannoniere', key: 'top_scorer' }, { label: 'MVP Mondiale', key: 'mvp_world_cup' }, { label: 'Portiere (Gold)', key: 'best_goalkeeper' } ].map(s => (
                   <div key={s.key} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
                     <p className="text-[9px] font-black text-slate-500 uppercase mb-3 tracking-widest border-b border-slate-800 pb-1">{s.label} (Top Voti)</p>
                     {getTopPicks(s.key).map(([name, count]: any) => (
-                      <div key={name} className="flex justify-between text-[10px] font-black uppercase italic mb-1">
-                        <span className="truncate pr-2">{name}</span>
-                        <span className="text-cyan-500 shrink-0">{count} voti</span>
-                      </div>
+                      <div key={name} className="flex justify-between text-[10px] font-black uppercase italic mb-1"><span className="truncate pr-2">{name}</span><span className="text-cyan-500 shrink-0">{count} voti</span></div>
                     ))}
                   </div>
                 ))}
