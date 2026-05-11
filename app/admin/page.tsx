@@ -15,17 +15,18 @@ import {
   ChevronUp,
   BarChart3,
   TrendingUp,
+  RefreshCw,
 } from 'lucide-react';
 
 const ADMIN_EMAIL = 'ricky@mondiale.it';
 
 const STAGES = [
-  { id: 'R32', label: 'Sedicesimi (+2pt)' },
-  { id: 'R16', label: 'Ottavi (+4pt)' },
-  { id: 'QF', label: 'Quarti (+6pt)' },
-  { id: 'SF', label: 'Semifinale (+8pt)' },
-  { id: 'F', label: 'Finale (+10pt)' },
-  { id: 'WINNER', label: 'Vincitore Mondiale (+20pt)' },
+  { id: 'R32', label: 'Sedicesimi (+2pt)', pts: 2 },
+  { id: 'R16', label: 'Ottavi (+4pt)', pts: 4 },
+  { id: 'QF', label: 'Quarti (+6pt)', pts: 6 },
+  { id: 'SF', label: 'Semifinale (+8pt)', pts: 8 },
+  { id: 'F', label: 'Finale (+10pt)', pts: 10 },
+  { id: 'WINNER', label: 'Vincitore Mondiale (+20pt)', pts: 20 },
 ];
 
 const GROUPS = [
@@ -169,6 +170,7 @@ const normalizeStage = (s: string) => {
 export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   const [openSection, setOpenSection] = useState<{
     iscrizioni: boolean;
@@ -188,7 +190,7 @@ export default function AdminPage() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [officialBracket, setOfficialBracket] = useState<any[]>([]);
   const [allUserBonuses, setAllUserBonuses] = useState<any[]>([]);
-  const [allWinnerBrackets, setAllWinnerBrackets] = useState<any[]>([]); // FIX: Aggiunto stato per le vincitrici
+  const [allWinnerBrackets, setAllWinnerBrackets] = useState<any[]>([]);
 
   const [bonusData, setBonusData] = useState({
     red: '',
@@ -217,7 +219,6 @@ export default function AdminPage() {
   }, []);
 
   async function fetchData() {
-    // Aggiunta la query per estrarre solo chi ha pronosticato la WINNER
     const [mRes, bRes, pRes, obRes, ubRes, brkRes] = await Promise.all([
       supabase.from('matches').select('*').order('id', { ascending: true }),
       supabase
@@ -241,7 +242,7 @@ export default function AdminPage() {
     setProfiles(pRes.data || []);
     setOfficialBracket(obRes.data || []);
     setAllUserBonuses(ubRes.data || []);
-    setAllWinnerBrackets(brkRes.data || []); // Salviamo le vincitrici
+    setAllWinnerBrackets(brkRes.data || []);
 
     if (bRes.data) {
       setBonusData({
@@ -265,6 +266,111 @@ export default function AdminPage() {
       });
     }
   }
+
+  const syncLeaderboard = async () => {
+    if (!window.confirm("Vuoi ricalcolare i punti per tutti i giocatori? L'operazione sovrascriverà la classifica attuale.")) return;
+
+    setSyncing(true);
+    try {
+      // 1. Scarichiamo tutti i dati necessari
+      const [
+        { data: profs },
+        { data: allMatches },
+        { data: allPreds },
+        { data: offBonuses },
+        { data: userBonuses },
+        { data: offBracket },
+        { data: userBrackets }
+      ] = await Promise.all([
+        supabase.from('profiles').select('id, username'),
+        supabase.from('matches').select('id, home_score_final, away_score_final, is_finished').eq('is_finished', true),
+        supabase.from('predictions').select('user_id, match_id, home_score, away_score'),
+        supabase.from('official_bonuses').select('*').maybeSingle(),
+        supabase.from('user_bonus_answers').select('*'),
+        supabase.from('official_bracket').select('stage, team_name'),
+        supabase.from('brackets').select('user_id, stage, team_name')
+      ]);
+
+      if (!profs) throw new Error("Errore caricamento profili");
+
+      // 2. Ricalcoliamo i punti utente per utente
+      const updates = profs.map(profile => {
+        let totalScore = 0;
+
+        // Punti Partite (Regole Avanzate)
+        const uPreds = allPreds?.filter(p => p.user_id === profile.id) || [];
+        uPreds.forEach(pred => {
+          const m = allMatches?.find(m => m.id === pred.match_id);
+          if (m) {
+            const pH = pred.home_score;
+            const pA = pred.away_score;
+            const mH = m.home_score_final;
+            const mA = m.away_score_final;
+
+            // Determiniamo i segni (1 = Vittoria Casa, -1 = Vittoria Trasferta, 0 = Pareggio)
+            const pSign = pH > pA ? 1 : pH < pA ? -1 : 0;
+            const mSign = mH > mA ? 1 : mH < mA ? -1 : 0;
+            
+            const correctSign = pSign === mSign;
+            const exactHome = pH === mH;
+            const exactAway = pA === mA;
+
+            if (exactHome && exactAway) {
+              totalScore += 10; // 10 PUNTI RISULTATO ESATTO
+            } else if (correctSign && (exactHome || exactAway)) {
+              totalScore += 6;  // 6 PUNTI SEGNO CORRETTO E SINGOLO VALORE
+            } else if (correctSign && !exactHome && !exactAway) {
+              totalScore += 4;  // 4 PUNTI SOLO SEGNO CORRETTO
+            } else if (!correctSign && (exactHome || exactAway)) {
+              totalScore += 2;  // 2 PUNTI SOLO SINGOLO VALORE (MA SEGNO ERRATO)
+            }
+          }
+        });
+
+        // Punti Tabellone
+        const uBracket = userBrackets?.filter(b => b.user_id === profile.id) || [];
+        uBracket.forEach(ub => {
+          const isCorrect = offBracket?.some(ob => normalizeStage(ob.stage) === normalizeStage(ub.stage) && ob.team_name.toLowerCase().trim() === ub.team_name.toLowerCase().trim());
+          if (isCorrect) {
+            totalScore += STAGES.find(s => s.id === normalizeStage(ub.stage))?.pts || 0;
+          }
+        });
+
+        // Punti Bonus
+        const uBonus = userBonuses?.find(b => b.user_id === profile.id);
+        if (uBonus && offBonuses) {
+          const checkBonus = (key: string) => {
+            if (offBonuses[key] != null && offBonuses[key] !== '') {
+              if (String(offBonuses[key]).toLowerCase().trim() === String(uBonus[key]).toLowerCase().trim()) {
+                totalScore += 10;
+              }
+            }
+          };
+          checkBonus('total_red_cards');
+          checkBonus('total_penalties');
+          checkBonus('total_own_goals');
+          checkBonus('top_scorer');
+          checkBonus('mvp_world_cup');
+          checkBonus('high_scoring_match');
+          checkBonus('highest_scoring_group');
+          checkBonus('lowest_scoring_group');
+        }
+
+        return { id: profile.id, points: totalScore };
+      });
+
+      // 3. Spediamo i nuovi punteggi su Supabase in un colpo solo
+      const { error } = await supabase.from('profiles').upsert(updates, { onConflict: 'id' });
+      if (error) throw error;
+
+      toast.success(`Classifica ricalcolata per ${updates.length} giocatori! 🚀`);
+      fetchData(); 
+    } catch (err: any) {
+      toast.error("Errore nel ricalcolo: " + err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const toggleSection = (section: keyof typeof openSection) => {
     setOpenSection((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -353,7 +459,6 @@ export default function AdminPage() {
     if (!error) fetchData();
   };
 
-  // Funzioni helper per le statistiche (Numeriche)
   const getAverage = (key: string) => {
     const valid = allUserBonuses
       .filter((b) => b[key] != null)
@@ -362,7 +467,6 @@ export default function AdminPage() {
     return (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1);
   };
 
-  // Funzioni helper per le statistiche (Testuali)
   const getTopPicks = (key: string) => {
     const counts: { [key: string]: number } = {};
     allUserBonuses.forEach((b) => {
@@ -377,7 +481,6 @@ export default function AdminPage() {
       .slice(0, 3);
   };
 
-  // Funzione helper ESCLUSIVA per la vincitrice del Mondiale
   const getTopWinnerPicks = () => {
     const counts: { [key: string]: number } = {};
     allWinnerBrackets.forEach((b) => {
@@ -410,9 +513,18 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4 pb-32 font-sans">
       <header className="text-center mb-12 pt-6">
-        <h1 className="text-5xl font-black text-yellow-500 italic uppercase tracking-tighter">
+        <h1 className="text-5xl font-black text-yellow-500 italic uppercase tracking-tighter mb-6">
           Control Tower
         </h1>
+        {/* TASTO SUPER SINCRONIZZAZIONE */}
+        <button 
+          onClick={syncLeaderboard}
+          disabled={syncing}
+          className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all active:scale-95 disabled:opacity-50"
+        >
+          <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
+          {syncing ? 'Calcolo Matematico in corso...' : 'Sincronizza Classifica'}
+        </button>
       </header>
 
       <div className="max-w-3xl mx-auto space-y-6">
@@ -443,8 +555,9 @@ export default function AdminPage() {
                   className="p-4 flex items-center justify-between hover:bg-slate-800/20"
                 >
                   <div>
-                    <p className="font-black text-sm uppercase italic text-white">
+                    <p className="font-black text-sm uppercase italic text-white flex items-center gap-2">
                       {p.username || 'Guerriero'}
+                      <span className="bg-slate-800 text-slate-400 text-[9px] px-2 py-0.5 rounded-full">{p.points || 0} pt</span>
                     </p>
                     <p className="text-[9px] text-slate-500 font-mono">
                       {p.email}
