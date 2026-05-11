@@ -1,19 +1,98 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import {
+  Trophy,
+  Users,
+  Zap,
+  Search,
+  Trash2,
+  CheckCircle2,
+  Star,
   Shield,
   ChevronDown,
   ChevronUp,
-  Clock,
-  Info,
-  Trash2,
+  BarChart3,
+  TrendingUp,
 } from 'lucide-react';
 
-const WORLD_CUP_START_DATE = new Date('2026-06-11T21:00:00+02:00');
+const ADMIN_EMAIL = 'ricky@mondiale.it';
+
+const STAGES = [
+  { id: 'R32', label: 'Sedicesimi (+2pt)' },
+  { id: 'R16', label: 'Ottavi (+4pt)' },
+  { id: 'QF', label: 'Quarti (+6pt)' },
+  { id: 'SF', label: 'Semifinale (+8pt)' },
+  { id: 'F', label: 'Finale (+10pt)' },
+  { id: 'WINNER', label: 'Vincitore Mondiale (+20pt)' },
+];
+
+const GROUPS = [
+  'Gruppo A',
+  'Gruppo B',
+  'Gruppo C',
+  'Gruppo D',
+  'Gruppo E',
+  'Gruppo F',
+  'Gruppo G',
+  'Gruppo H',
+  'Gruppo I',
+  'Gruppo J',
+  'Gruppo K',
+  'Gruppo L',
+];
+
+const TEAMS_2026 = [
+  'Algeria',
+  'Arabia Saudita',
+  'Argentina',
+  'Australia',
+  'Austria',
+  'Belgio',
+  'Bosnia ed Erzegovina',
+  'Brasile',
+  'Canada',
+  'Capo Verde',
+  'Colombia',
+  'Corea del Sud',
+  "Costa d'Avorio",
+  'Croazia',
+  'Curaçao',
+  'Ecuador',
+  'Egitto',
+  'Francia',
+  'Germania',
+  'Ghana',
+  'Giappone',
+  'Giordania',
+  'Haiti',
+  'Inghilterra',
+  'Iran',
+  'Iraq',
+  'Marocco',
+  'Messico',
+  'Norvegia',
+  'Nuova Zelanda',
+  'Olanda',
+  'Panama',
+  'Paraguay',
+  'Portogallo',
+  'Qatar',
+  'Repubblica Ceca',
+  'Repubblica Democratica del Congo',
+  'Scozia',
+  'Senegal',
+  'Spagna',
+  'Stati Uniti',
+  'Sudafrica',
+  'Svezia',
+  'Svizzera',
+  'Tunisia',
+  'Turchia',
+  'Uruguay',
+  'Uzbekistan',
+].sort();
 
 const flagMap: { [key: string]: string } = {
   algeria: 'dz',
@@ -70,518 +149,871 @@ const flagMap: { [key: string]: string } = {
   uzbekistan: 'uz',
 };
 
-const tournamentGroups = [
-  {
-    name: 'Gruppo A',
-    teams: ['Messico', 'Sudafrica', 'Corea del Sud', 'Repubblica Ceca'],
-  },
-  {
-    name: 'Gruppo B',
-    teams: ['Canada', 'Svizzera', 'Qatar', 'Bosnia Erzegovina'],
-  },
-  { name: 'Gruppo C', teams: ['Brasile', 'Marocco', 'Haiti', 'Scozia'] },
-  { name: 'Gruppo D', teams: ['Usa', 'Australia', 'Paraguay', 'Turchia'] },
-  {
-    name: 'Gruppo E',
-    teams: ['Germania', "Costa D'Avorio", 'Ecuador', 'Curacao'],
-  },
-  { name: 'Gruppo F', teams: ['Olanda', 'Svezia', 'Giappone', 'Tunisia'] },
-  { name: 'Gruppo G', teams: ['Belgio', 'Iran', 'Egitto', 'Nuova Zelanda'] },
-  {
-    name: 'Gruppo H',
-    teams: ['Spagna', 'Uruguay', 'Arabia Saudita', 'Capo Verde'],
-  },
-  { name: 'Gruppo I', teams: ['Francia', 'Senegal', 'Norvegia', 'Iraq'] },
-  { name: 'Gruppo J', teams: ['Argentina', 'Austria', 'Algeria', 'Giordania'] },
-  {
-    name: 'Gruppo K',
-    teams: [
-      'Portogallo',
-      'Colombia',
-      'Uzbekistan',
-      'Repubblica Democratica del Congo',
-    ],
-  },
-  { name: 'Gruppo L', teams: ['Inghilterra', 'Croazia', 'Ghana', 'Panama'] },
-];
+const normalizeStage = (s: string) => {
+  const u = s?.toUpperCase().trim() || '';
+  if (u.includes('SEDICESIM') || u === 'R32') return 'R32';
+  if (u.includes('OTTAV') || u === 'R16') return 'R16';
+  if (u.includes('QUART') || u === 'QF') return 'QF';
+  if (u.includes('SEMIFINAL') || u === 'SF') return 'SF';
+  if (
+    u.includes('VINCITOR') ||
+    u.includes('VINCITRIC') ||
+    u.includes('CAMPIONE') ||
+    u === 'WINNER'
+  )
+    return 'WINNER';
+  if (u.includes('FINAL') || u === 'F') return 'F';
+  return u;
+};
 
-export default function MatchesPage() {
-  const [matches, setMatches] = useState<any[]>([]);
+export default function AdminPage() {
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
-  const [predictions, setPredictions] = useState<any>({});
-  // NUOVO STATO: La "fotografia" del database
-  const [originalPredictions, setOriginalPredictions] = useState<any>({});
+  const [openSection, setOpenSection] = useState<{
+    iscrizioni: boolean;
+    risultati: boolean;
+    tabellone: boolean;
+    bonus: boolean;
+    statistiche: boolean;
+  }>({
+    iscrizioni: false,
+    risultati: false,
+    tabellone: false,
+    bonus: false,
+    statistiche: false,
+  });
 
-  const [openGroups, setOpenGroups] = useState<{ [key: string]: boolean }>({});
+  const [matches, setMatches] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [officialBracket, setOfficialBracket] = useState<any[]>([]);
+  const [allUserBonuses, setAllUserBonuses] = useState<any[]>([]);
+  const [allWinnerBrackets, setAllWinnerBrackets] = useState<any[]>([]); // FIX: Aggiunto stato per le vincitrici
 
-  const router = useRouter();
-  const isExpired = new Date() > WORLD_CUP_START_DATE;
+  const [bonusData, setBonusData] = useState({
+    red: '',
+    top: '',
+    high: '',
+    penalties: '',
+    own_goals: '',
+    high_group: '',
+    low_group: '',
+    mvp_world_cup: '',
+  });
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  async function fetchData() {
-    try {
-      setLoading(true);
+    async function init() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const { data: matchesData } = await supabase
-        .from('matches')
-        .select('*')
-        .order('match_date', { ascending: true });
-      setMatches(matchesData || []);
-
-      if (user) {
-        const { data: predData } = await supabase
-          .from('predictions')
-          .select('*')
-          .eq('user_id', user.id);
-        if (predData) {
-          const predMap: any = {};
-          predData.forEach((p) => {
-            predMap[p.match_id] = {
-              home: p.home_score.toString(),
-              away: p.away_score.toString(),
-            };
-          });
-          setPredictions(predMap);
-          // Salviamo una copia per calcolare le differenze
-          setOriginalPredictions(JSON.parse(JSON.stringify(predMap)));
-        }
+      if (user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        setIsAdmin(true);
+        fetchData();
       }
-    } catch (error) {
-      toast.error('Errore caricamento dati');
-    } finally {
       setLoading(false);
+    }
+    init();
+  }, []);
+
+  async function fetchData() {
+    // Aggiunta la query per estrarre solo chi ha pronosticato la WINNER
+    const [mRes, bRes, pRes, obRes, ubRes, brkRes] = await Promise.all([
+      supabase.from('matches').select('*').order('id', { ascending: true }),
+      supabase
+        .from('official_bonuses')
+        .select('*')
+        .eq('id', '00000000-0000-0000-0000-000000000000')
+        .maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('*')
+        .order('username', { ascending: true }),
+      supabase
+        .from('official_bracket')
+        .select('*')
+        .order('id', { ascending: true }),
+      supabase.from('user_bonus_answers').select('*'),
+      supabase.from('brackets').select('team_name').eq('stage', 'WINNER'),
+    ]);
+
+    setMatches(mRes.data || []);
+    setProfiles(pRes.data || []);
+    setOfficialBracket(obRes.data || []);
+    setAllUserBonuses(ubRes.data || []);
+    setAllWinnerBrackets(brkRes.data || []); // Salviamo le vincitrici
+
+    if (bRes.data) {
+      setBonusData({
+        red:
+          bRes.data.total_red_cards != null
+            ? bRes.data.total_red_cards.toString()
+            : '',
+        top: bRes.data.top_scorer || '',
+        high: bRes.data.high_scoring_match || '',
+        penalties:
+          bRes.data.total_penalties != null
+            ? bRes.data.total_penalties.toString()
+            : '',
+        own_goals:
+          bRes.data.total_own_goals != null
+            ? bRes.data.total_own_goals.toString()
+            : '',
+        high_group: bRes.data.highest_scoring_group || '',
+        low_group: bRes.data.lowest_scoring_group || '',
+        mvp_world_cup: bRes.data.mvp_world_cup || '',
+      });
     }
   }
 
-  const toggleGroup = (groupName: string) => {
-    setOpenGroups((prev) => ({
-      ...prev,
-      [groupName]: !prev[groupName],
-    }));
+  const toggleSection = (section: keyof typeof openSection) => {
+    setOpenSection((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
   const getFlagCode = (team: string) => flagMap[team?.toLowerCase().trim()];
 
-  const handleInputChange = (
-    matchId: number,
-    team: 'home' | 'away',
-    value: string
-  ) => {
-    if (isExpired || (value !== '' && parseInt(value) < 0)) return;
-    setPredictions({
-      ...predictions,
-      [matchId]: { ...predictions[matchId], [team]: value },
-    });
-  };
+  const updateScore = async (id: number) => {
+    const h = (document.getElementById(`h-${id}`) as HTMLInputElement).value;
+    const a = (document.getElementById(`a-${id}`) as HTMLInputElement).value;
+    const isFinished = h !== '' && a !== '';
+    const { error } = await supabase
+      .from('matches')
+      .update({
+        home_score_final: isFinished ? parseInt(h) : null,
+        away_score_final: isFinished ? parseInt(a) : null,
+        is_finished: isFinished,
+      })
+      .eq('id', id);
 
-  const resetGroup = async (e: React.MouseEvent, groupMatchesArray: any[]) => {
-    e.stopPropagation();
-    if (isExpired) return;
-
-    if (
-      window.confirm(
-        'Sei sicuro di voler svuotare e cancellare i pronostici di questo girone?'
-      )
-    ) {
-      setSaving(true);
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) throw new Error('Utente non trovato');
-
-        const matchIds = groupMatchesArray.map((m) => m.id);
-
-        const { error } = await supabase
-          .from('predictions')
-          .delete()
-          .eq('user_id', user.id)
-          .in('match_id', matchIds);
-
-        if (error) throw error;
-
-        // Aggiorna l'interfaccia rimuovendo i valori e la foto originale
-        const newPredictions = { ...predictions };
-        const newOriginals = { ...originalPredictions };
-        matchIds.forEach((id) => {
-          delete newPredictions[id];
-          delete newOriginals[id];
-        });
-
-        setPredictions(newPredictions);
-        setOriginalPredictions(newOriginals);
-
-        toast.success('Girone azzerato e salvato!', { icon: '🧹' });
-      } catch (err: any) {
-        toast.error("Errore durante l'azzeramento");
-      } finally {
-        setSaving(false);
-      }
+    if (error) toast.error(error.message);
+    else {
+      toast.success(isFinished ? 'Risultato salvato!' : 'Risultato resettato');
+      fetchData();
     }
   };
 
-  const saveAllPredictions = async () => {
-    if (isExpired) return toast.error('Le giocate sono chiuse!');
-    setSaving(true);
+  const saveBonuses = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/profile');
-      return;
-    }
+    const payload = {
+      id: '00000000-0000-0000-0000-000000000000',
+      total_red_cards: bonusData.red !== '' ? parseInt(bonusData.red) : null,
+      total_penalties:
+        bonusData.penalties !== '' ? parseInt(bonusData.penalties) : null,
+      total_own_goals:
+        bonusData.own_goals !== '' ? parseInt(bonusData.own_goals) : null,
+      top_scorer: bonusData.top.trim() || null,
+      mvp_world_cup: bonusData.mvp_world_cup.trim() || null,
+      high_scoring_match: bonusData.high || null,
+      highest_scoring_group: bonusData.high_group || null,
+      lowest_scoring_group: bonusData.low_group || null,
+    };
 
-    // 1. Calcoliamo le DIFFERENZE (Nuovi o Modificati)
-    let changedCount = 0;
-    const rowsToUpsert = Object.entries(predictions)
-      .filter(
-        ([_, val]: any) =>
-          val.home !== '' &&
-          val.away !== '' &&
-          val.home !== undefined &&
-          val.away !== undefined
-      )
-      .map(([matchId, val]: any) => {
-        const init = originalPredictions[matchId];
-        // Se non c'era, o se i numeri sono diversi, è un cambiamento
-        if (
-          !init ||
-          String(init.home) !== String(val.home) ||
-          String(init.away) !== String(val.away)
-        ) {
-          changedCount++;
-        }
-        return {
-          user_id: user.id,
-          match_id: parseInt(matchId),
-          home_score: parseInt(val.home),
-          away_score: parseInt(val.away),
-        };
-      });
+    const { error } = await supabase
+      .from('official_bonuses')
+      .upsert(payload, { onConflict: 'id' });
 
-    // 2. Calcoliamo se qualcosa è stato eliminato
-    let deletedCount = 0;
-    Object.keys(originalPredictions).forEach((matchId) => {
-      const val = predictions[matchId];
-      if (
-        !val ||
-        val.home === '' ||
-        val.away === '' ||
-        val.home === undefined ||
-        val.away === undefined
-      ) {
-        deletedCount++;
-      }
-    });
+    if (error) toast.error(error.message);
+    else toast.success('Bonus Ufficiali aggiornati!');
+  };
 
-    // Se non è cambiato nulla, evitiamo richieste inutili al database
-    if (changedCount === 0 && deletedCount === 0) {
-      toast('Nessuna modifica da salvare.', { icon: '👍' });
-      setSaving(false);
-      return;
-    }
+  const saveQualif = async () => {
+    const teamSelect = document.getElementById('q_team') as HTMLSelectElement;
+    const stageSelect = document.getElementById('q_stage') as HTMLSelectElement;
+    const team = teamSelect.value;
+    const stage = stageSelect.value;
+    if (!team || !stage) return toast.error('Seleziona squadra e fase!');
 
-    // 3. Eseguiamo il salvataggio reale
-    try {
-      await supabase.from('predictions').delete().eq('user_id', user.id);
-
-      if (rowsToUpsert.length > 0) {
-        const { error } = await supabase
-          .from('predictions')
-          .insert(rowsToUpsert);
-        if (error) throw error;
-
-        // Aggiorniamo la "fotografia" così non ce li ricalcola la prossima volta
-        const newOriginals: any = {};
-        rowsToUpsert.forEach((r) => {
-          newOriginals[r.match_id] = {
-            home: r.home_score.toString(),
-            away: r.away_score.toString(),
-          };
-        });
-        setOriginalPredictions(newOriginals);
-
-        // Messaggi intelligenti
-        if (changedCount > 0 && deletedCount > 0) {
-          toast.success(
-            `${changedCount} salvati e ${deletedCount} rimossi! 🏆`
-          );
-        } else if (changedCount > 0) {
-          toast.success(`${changedCount} nuovi pronostici salvati! 🏆`);
-        } else if (deletedCount > 0) {
-          toast.success(`${deletedCount} pronostici rimossi! 🧹`);
-        }
-      } else {
-        setOriginalPredictions({});
-        toast.success('Tutti i pronostici sono stati azzerati!');
-      }
-    } catch (err: any) {
-      toast.error('Errore durante il salvataggio: ' + err.message);
-    } finally {
-      setSaving(false);
+    const { error } = await supabase
+      .from('official_bracket')
+      .insert([{ stage, team_name: team }]);
+    if (error) toast.error(error.message);
+    else {
+      toast.success('Squadra registrata!');
+      fetchData();
     }
   };
 
-  const groupMatches = () => {
-    const grouped: { [key: string]: any[] } = {};
-    tournamentGroups.forEach((group) => {
-      grouped[group.name] = [];
-    });
-    grouped['Altre Partite'] = [];
+  const deleteQualif = async (id: any) => {
+    const { error } = await supabase
+      .from('official_bracket')
+      .delete()
+      .eq('id', id);
+    if (!error) {
+      toast.success('Rimosso!');
+      fetchData();
+    }
+  };
 
-    matches.forEach((match) => {
-      let foundGroup = false;
-      for (const group of tournamentGroups) {
-        if (
-          group.teams.some(
-            (t) =>
-              t.toLowerCase() === match.home_team.toLowerCase() ||
-              t.toLowerCase() === match.away_team.toLowerCase()
-          )
-        ) {
-          grouped[group.name].push(match);
-          foundGroup = true;
-          break;
-        }
+  const togglePayment = async (userId: string, status: boolean) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_paid: !status })
+      .eq('id', userId);
+    if (!error) fetchData();
+  };
+
+  // Funzioni helper per le statistiche (Numeriche)
+  const getAverage = (key: string) => {
+    const valid = allUserBonuses
+      .filter((b) => b[key] != null)
+      .map((b) => Number(b[key]));
+    if (valid.length === 0) return 0;
+    return (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1);
+  };
+
+  // Funzioni helper per le statistiche (Testuali)
+  const getTopPicks = (key: string) => {
+    const counts: { [key: string]: number } = {};
+    allUserBonuses.forEach((b) => {
+      const val = b[key];
+      if (val && String(val).trim() !== '') {
+        const cleanVal = String(val).trim().toUpperCase();
+        counts[cleanVal] = (counts[cleanVal] || 0) + 1;
       }
-      if (!foundGroup) grouped['Altre Partite'].push(match);
     });
-    return grouped;
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+  };
+
+  // Funzione helper ESCLUSIVA per la vincitrice del Mondiale
+  const getTopWinnerPicks = () => {
+    const counts: { [key: string]: number } = {};
+    allWinnerBrackets.forEach((b) => {
+      const val = b.team_name;
+      if (val && String(val).trim() !== '') {
+        const cleanVal = String(val).trim().toUpperCase();
+        counts[cleanVal] = (counts[cleanVal] || 0) + 1;
+      }
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
   };
 
   if (loading)
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-yellow-500 font-black animate-pulse uppercase">
-        Caricamento...
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-yellow-500 font-black animate-pulse uppercase italic">
+        Inizializzazione...
+      </div>
+    );
+  if (!isAdmin)
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-10">
+        <div className="text-rose-500 font-black border-4 border-rose-500 p-10 uppercase">
+          ACCESSO NEGATO
+        </div>
       </div>
     );
 
-  const groupedMatches = groupMatches();
-
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-4 pb-48 font-sans text-center">
-      <div className="max-w-3xl mx-auto">
-        <header className="mb-12 pt-4">
-          <h1 className="text-4xl sm:text-5xl font-black text-yellow-500 mb-3 uppercase italic tracking-tighter">
-            Fase a Gironi
-          </h1>
-          <div className="inline-flex items-center gap-2 bg-slate-900 border border-slate-800 px-4 py-2 rounded-2xl">
-            {isExpired ? (
-              <Shield size={14} className="text-rose-500" />
+    <div className="min-h-screen bg-slate-950 text-white p-4 pb-32 font-sans">
+      <header className="text-center mb-12 pt-6">
+        <h1 className="text-5xl font-black text-yellow-500 italic uppercase tracking-tighter">
+          Control Tower
+        </h1>
+      </header>
+
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* --- 1. ISCRIZIONI --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button
+            onClick={() => toggleSection('iscrizioni')}
+            className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <Users className="text-emerald-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">
+                Iscrizioni ({profiles.length})
+              </h2>
+            </div>
+            {openSection.iscrizioni ? (
+              <ChevronUp className="text-slate-500" />
             ) : (
-              <Clock size={14} className="text-yellow-500" />
+              <ChevronDown className="text-slate-500" />
             )}
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              {isExpired
-                ? 'Pronostici Chiusi'
-                : 'Compila e salva tutto in fondo'}
-            </p>
-          </div>
-        </header>
+          </button>
 
-        <div className="space-y-4 text-left">
-          {Object.entries(groupedMatches).map(
-            ([groupName, groupMatchesArray]) => {
-              if (groupMatchesArray.length === 0) return null;
-              const isOpen = openGroups[groupName];
-
-              return (
+          {openSection.iscrizioni && (
+            <div className="bg-slate-900 border-t border-slate-800 divide-y divide-slate-800/50">
+              {profiles.map((p) => (
                 <div
-                  key={groupName}
-                  className={`bg-slate-900/40 border-2 rounded-[2.5rem] overflow-hidden transition-all duration-300 ${
-                    isOpen
-                      ? 'border-yellow-500/20 bg-slate-900/80 shadow-2xl'
-                      : 'border-slate-800'
-                  }`}
+                  key={p.id}
+                  className="p-4 flex items-center justify-between hover:bg-slate-800/20"
                 >
-                  {/* Header Girone (Il pulsante dell'Accordion) */}
+                  <div>
+                    <p className="font-black text-sm uppercase italic text-white">
+                      {p.username || 'Guerriero'}
+                    </p>
+                    <p className="text-[9px] text-slate-500 font-mono">
+                      {p.email}
+                    </p>
+                  </div>
                   <button
-                    onClick={() => toggleGroup(groupName)}
-                    className="w-full p-5 sm:p-6 flex items-center justify-between hover:bg-slate-800/40 transition-colors"
+                    onClick={() => togglePayment(p.id, p.is_paid)}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      p.is_paid
+                        ? 'bg-emerald-500 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                        : 'bg-slate-950 text-rose-500 border border-rose-500/30'
+                    }`}
                   >
-                    <div className="flex items-center gap-4">
+                    {p.is_paid ? <CheckCircle2 size={14} /> : null}
+                    {p.is_paid ? 'PAGATO' : 'DA PAGARE'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* --- 2. FASE A GIRONI --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button
+            onClick={() => toggleSection('risultati')}
+            className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <Zap className="text-yellow-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">
+                Fase a Gironi
+              </h2>
+            </div>
+            {openSection.risultati ? (
+              <ChevronUp className="text-slate-500" />
+            ) : (
+              <ChevronDown className="text-slate-500" />
+            )}
+          </button>
+
+          {openSection.risultati && (
+            <div className="border-t border-slate-800 p-6 space-y-6">
+              <div className="relative">
+                <Search
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={14}
+                />
+                <input
+                  type="text"
+                  placeholder="CERCA SQUADRA..."
+                  className="bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase focus:border-yellow-500 outline-none w-full transition-all"
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-3">
+                {matches
+                  .filter(
+                    (m) =>
+                      m.home_team
+                        .toLowerCase()
+                        .includes(searchTerm.toLowerCase()) ||
+                      m.away_team
+                        .toLowerCase()
+                        .includes(searchTerm.toLowerCase())
+                  )
+                  .map((m) => {
+                    const homeFlag = getFlagCode(m.home_team);
+                    const awayFlag = getFlagCode(m.away_team);
+                    const hasResult =
+                      m.is_finished &&
+                      m.home_score_final !== null &&
+                      m.away_score_final !== null;
+                    return (
                       <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm ${
-                          isOpen
-                            ? 'bg-yellow-500 text-slate-950'
-                            : 'bg-slate-800 text-slate-500'
+                        key={m.id}
+                        className={`bg-slate-900 p-4 rounded-3xl border transition-all flex flex-col sm:flex-row items-center gap-4 shadow-md ${
+                          hasResult
+                            ? 'border-emerald-500/20'
+                            : 'border-slate-800'
                         }`}
                       >
-                        {groupName.split(' ')[1] || '?'}
-                      </div>
-                      <div className="text-left">
-                        <h2 className="font-black text-base sm:text-lg uppercase italic text-white tracking-tight">
-                          {groupName}
-                        </h2>
-                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-                          {groupMatchesArray.length} Partite
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {!isExpired && (
-                        <div
-                          onClick={(e) => resetGroup(e, groupMatchesArray)}
-                          className="p-2 sm:p-3 bg-slate-950 border border-slate-800 rounded-xl text-rose-500 hover:bg-rose-500 hover:text-white transition-all active:scale-95"
-                          title={`Svuota ${groupName}`}
-                        >
-                          <Trash2 size={14} />
+                        <div className="flex sm:flex-col items-center justify-between w-full sm:w-auto gap-2">
+                          <span className="text-[10px] text-slate-600 uppercase font-black italic">
+                            #{m.id}
+                          </span>
+                          {hasResult && (
+                            <span className="text-[8px] text-emerald-400 font-black uppercase italic bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                              FINITA
+                            </span>
+                          )}
                         </div>
-                      )}
-                      <div className="p-2 sm:p-3">
-                        {isOpen ? (
-                          <ChevronUp className="text-yellow-500" />
-                        ) : (
-                          <ChevronDown className="text-slate-600" />
-                        )}
+                        <div className="flex-1 flex items-center justify-center gap-4 w-full">
+                          <div className="flex flex-1 items-center justify-end gap-2 text-right">
+                            <span className="font-black uppercase italic text-xs hidden sm:block truncate">
+                              {m.home_team}
+                            </span>
+                            {homeFlag ? (
+                              <img
+                                src={`https://flagcdn.com/w40/${homeFlag}.png`}
+                                className="w-6 h-auto rounded-sm shadow-md"
+                                alt=""
+                              />
+                            ) : (
+                              <Shield size={10} className="text-slate-600" />
+                            )}
+                            <input
+                              id={`h-${m.id}`}
+                              type="number"
+                              defaultValue={m.home_score_final ?? ''}
+                              className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none"
+                            />
+                          </div>
+                          <span className="text-slate-700 font-black">-</span>
+                          <div className="flex flex-1 items-center justify-start gap-2 text-left">
+                            <input
+                              id={`a-${m.id}`}
+                              type="number"
+                              defaultValue={m.away_score_final ?? ''}
+                              className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none"
+                            />
+                            {awayFlag ? (
+                              <img
+                                src={`https://flagcdn.com/w40/${awayFlag}.png`}
+                                className="w-6 h-auto rounded-sm shadow-md"
+                                alt=""
+                              />
+                            ) : (
+                              <Shield size={10} className="text-slate-600" />
+                            )}
+                            <span className="font-black uppercase italic text-xs hidden sm:block truncate">
+                              {m.away_team}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => updateScore(m.id)}
+                          className={`w-full sm:w-auto px-4 py-3 rounded-xl font-black uppercase text-[10px] italic transition-all flex items-center justify-center gap-2 ${
+                            hasResult
+                              ? 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-slate-950 cursor-pointer'
+                              : 'bg-yellow-500 text-slate-950 hover:bg-yellow-400 cursor-pointer'
+                          }`}
+                        >
+                          {hasResult ? (
+                            <CheckCircle2 size={14} />
+                          ) : (
+                            <Zap size={14} />
+                          )}
+                          <span>{hasResult ? 'AGGIORNA' : 'SALVA'}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* --- 3. FASE FINALE --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button
+            onClick={() => toggleSection('tabellone')}
+            className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <Trophy className="text-blue-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">
+                Fase Finale
+              </h2>
+            </div>
+            {openSection.tabellone ? (
+              <ChevronUp className="text-slate-500" />
+            ) : (
+              <ChevronDown className="text-slate-500" />
+            )}
+          </button>
+
+          {openSection.tabellone && (
+            <div className="border-t border-slate-800 p-6 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <select
+                  id="q_team"
+                  className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-xs uppercase outline-none focus:border-blue-500"
+                >
+                  <option value="">SQUADRA...</option>
+                  {TEAMS_2026.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  id="q_stage"
+                  className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-xs uppercase outline-none focus:border-blue-500"
+                >
+                  {STAGES.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={saveQualif}
+                className="w-full bg-blue-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest active:scale-95 shadow-xl"
+              >
+                CONFERMA QUALIFICATA
+              </button>
+
+              <div className="mt-8 space-y-4">
+                {STAGES.map((stage) => {
+                  const teamsInThisStage = officialBracket.filter(
+                    (o) => normalizeStage(o.stage) === stage.id
+                  );
+                  if (teamsInThisStage.length === 0) return null;
+                  return (
+                    <div
+                      key={stage.id}
+                      className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/80"
+                    >
+                      <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">
+                        {stage.label.split(' ')[0]}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {teamsInThisStage.map((o) => {
+                          const flag = getFlagCode(o.team_name);
+                          return (
+                            <div
+                              key={o.id}
+                              className="bg-slate-900 border border-slate-700 pl-2 pr-1 py-1.5 rounded-lg flex items-center gap-2 shadow-sm"
+                            >
+                              {flag && (
+                                <img
+                                  src={`https://flagcdn.com/w20/${flag}.png`}
+                                  className="w-4 h-auto rounded-sm"
+                                  alt=""
+                                />
+                              )}
+                              <span className="text-[10px] font-black uppercase text-white">
+                                {o.team_name}
+                              </span>
+                              <button
+                                onClick={() => deleteQualif(o.id)}
+                                className="p-1 hover:bg-rose-500/20 rounded ml-1 transition-colors"
+                              >
+                                <Trash2 size={12} className="text-rose-500" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  </button>
-
-                  {/* Lista Partite (Visibile solo se aperto) */}
-                  {isOpen && (
-                    <div className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-                      {groupMatchesArray.map((match) => {
-                        const isFinished = match.home_score_final !== null;
-                        const hFlag = getFlagCode(match.home_team);
-                        const aFlag = getFlagCode(match.away_team);
-
-                        return (
-                          <div
-                            key={match.id}
-                            className="bg-slate-950/50 border border-slate-800/50 rounded-3xl p-5 hover:border-slate-700 transition-all"
-                          >
-                            <div className="flex justify-between text-[8px] font-black uppercase text-slate-600 mb-4 italic">
-                              <span>
-                                {new Date(match.match_date).toLocaleString(
-                                  'it-IT',
-                                  {
-                                    day: '2-digit',
-                                    month: 'short',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  }
-                                )}
-                              </span>
-                              <span>MATCH #{match.id}</span>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-2">
-                              {/* Casa */}
-                              <div className="flex-1 flex flex-col items-end gap-1 text-right">
-                                {hFlag ? (
-                                  <img
-                                    src={`https://flagcdn.com/w80/${hFlag}.png`}
-                                    className="w-7 h-auto rounded-sm shadow-sm"
-                                    alt=""
-                                  />
-                                ) : (
-                                  <Shield
-                                    size={14}
-                                    className="text-slate-800"
-                                  />
-                                )}
-                                <span className="font-black text-[10px] uppercase italic text-slate-200 truncate w-full">
-                                  {match.home_team}
-                                </span>
-                              </div>
-
-                              {/* Input */}
-                              <div className="flex flex-col items-center gap-1">
-                                <div className="flex items-center gap-1.5">
-                                  <input
-                                    type="number"
-                                    value={predictions[match.id]?.home ?? ''}
-                                    disabled={isExpired}
-                                    placeholder="-"
-                                    className="w-11 h-11 bg-slate-900 border border-slate-800 rounded-xl text-center font-black text-yellow-500 text-lg focus:border-yellow-500 outline-none transition-all disabled:opacity-30"
-                                    onChange={(e) =>
-                                      handleInputChange(
-                                        match.id,
-                                        'home',
-                                        e.target.value
-                                      )
-                                    }
-                                  />
-                                  <span className="text-slate-800 font-black">
-                                    :
-                                  </span>
-                                  <input
-                                    type="number"
-                                    value={predictions[match.id]?.away ?? ''}
-                                    disabled={isExpired}
-                                    placeholder="-"
-                                    className="w-11 h-11 bg-slate-900 border border-slate-800 rounded-xl text-center font-black text-yellow-500 text-lg focus:border-yellow-500 outline-none transition-all disabled:opacity-30"
-                                    onChange={(e) =>
-                                      handleInputChange(
-                                        match.id,
-                                        'away',
-                                        e.target.value
-                                      )
-                                    }
-                                  />
-                                </div>
-                                {isFinished && (
-                                  <span className="text-[7px] font-black text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10">
-                                    FINALE: {match.home_score_final}-
-                                    {match.away_score_final}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Trasferta */}
-                              <div className="flex-1 flex flex-col items-start gap-1 text-left">
-                                {aFlag ? (
-                                  <img
-                                    src={`https://flagcdn.com/w80/${aFlag}.png`}
-                                    className="w-7 h-auto rounded-sm shadow-sm"
-                                    alt=""
-                                  />
-                                ) : (
-                                  <Shield
-                                    size={14}
-                                    className="text-slate-800"
-                                  />
-                                )}
-                                <span className="font-black text-[10px] uppercase italic text-slate-200 truncate w-full">
-                                  {match.away_team}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            }
+                  );
+                })}
+              </div>
+            </div>
           )}
-        </div>
-      </div>
+        </section>
 
-      {/* Bottone di salvataggio */}
-      {!isExpired && (
-        <div className="fixed bottom-24 left-0 right-0 flex justify-center px-6 z-50 pointer-events-none">
+        {/* --- 4. BONUS UFFICIALI --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
           <button
-            onClick={saveAllPredictions}
-            disabled={saving}
-            className="group pointer-events-auto max-w-[280px] w-full bg-yellow-500 text-slate-950 font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[10px] italic shadow-[0_20px_50px_rgba(234,179,8,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"
+            onClick={() => toggleSection('bonus')}
+            className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all"
           >
-            {saving ? 'Salvataggio...' : 'Conferma Pronostici'}
-            {!saving && <span>💾</span>}
+            <div className="flex items-center gap-3">
+              <Star className="text-purple-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">
+                Bonus Ufficiali
+              </h2>
+            </div>
+            {openSection.bonus ? (
+              <ChevronUp className="text-slate-500" />
+            ) : (
+              <ChevronDown className="text-slate-500" />
+            )}
           </button>
-        </div>
-      )}
-    </main>
+
+          {openSection.bonus && (
+            <div className="border-t border-slate-800 p-6">
+              <form onSubmit={saveBonuses} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                      Rossi Totali
+                    </span>
+                    <input
+                      value={bonusData.red}
+                      onChange={(e) =>
+                        setBonusData({ ...bonusData, red: e.target.value })
+                      }
+                      type="number"
+                      placeholder="Vuoto = Nessun dato"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                      Rigori Totali
+                    </span>
+                    <input
+                      value={bonusData.penalties}
+                      onChange={(e) =>
+                        setBonusData({
+                          ...bonusData,
+                          penalties: e.target.value,
+                        })
+                      }
+                      type="number"
+                      placeholder="Vuoto = Nessun dato"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                      Autogol Totali
+                    </span>
+                    <input
+                      value={bonusData.own_goals}
+                      onChange={(e) =>
+                        setBonusData({
+                          ...bonusData,
+                          own_goals: e.target.value,
+                        })
+                      }
+                      type="number"
+                      placeholder="Vuoto = Nessun dato"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                      Capocannoniere
+                    </span>
+                    <input
+                      value={bonusData.top}
+                      onChange={(e) =>
+                        setBonusData({ ...bonusData, top: e.target.value })
+                      }
+                      placeholder="Es. Mbappé"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                      MVP Mondiale
+                    </span>
+                    <input
+                      value={bonusData.mvp_world_cup}
+                      onChange={(e) =>
+                        setBonusData({
+                          ...bonusData,
+                          mvp_world_cup: e.target.value,
+                        })
+                      }
+                      placeholder="Es. Lamine Yamal"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                    Partita con più gol
+                  </span>
+                  <select
+                    value={bonusData.high}
+                    onChange={(e) =>
+                      setBonusData({ ...bonusData, high: e.target.value })
+                    }
+                    className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none text-sm"
+                  >
+                    <option value="">Seleziona Partita...</option>
+                    {matches
+                      .filter((m) => !m.home_team.includes('TBD'))
+                      .map((m) => (
+                        <option
+                          key={m.id}
+                          value={`${m.home_team} - ${m.away_team}`}
+                        >
+                          {m.home_team} - {m.away_team}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                      Girone + Gol
+                    </span>
+                    <select
+                      value={bonusData.high_group}
+                      onChange={(e) =>
+                        setBonusData({
+                          ...bonusData,
+                          high_group: e.target.value,
+                        })
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none"
+                    >
+                      <option value="">Seleziona Girone...</option>
+                      {GROUPS.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-500 ml-2">
+                      Girone - Gol
+                    </span>
+                    <select
+                      value={bonusData.low_group}
+                      onChange={(e) =>
+                        setBonusData({
+                          ...bonusData,
+                          low_group: e.target.value,
+                        })
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none"
+                    >
+                      <option value="">Seleziona Girone...</option>
+                      {GROUPS.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-all"
+                >
+                  SALVA BONUS
+                </button>
+              </form>
+            </div>
+          )}
+        </section>
+
+        {/* --- 5. STATISTICHE GLOBALI --- */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-[2rem] overflow-hidden transition-all shadow-xl">
+          <button
+            onClick={() => toggleSection('statistiche')}
+            className="w-full p-6 flex items-center justify-between hover:bg-slate-800/30 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <BarChart3 className="text-cyan-500" size={24} />
+              <h2 className="text-xl font-black uppercase italic tracking-tight">
+                Statistiche Globali
+              </h2>
+            </div>
+            {openSection.statistiche ? (
+              <ChevronUp className="text-slate-500" />
+            ) : (
+              <ChevronDown className="text-slate-500" />
+            )}
+          </button>
+
+          {openSection.statistiche && (
+            <div className="border-t border-slate-800 p-6 space-y-6 bg-slate-950/30">
+              {/* Box Medie Numeriche */}
+              <div>
+                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <TrendingUp size={12} /> Medie Previsioni
+                </h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center shadow-lg">
+                    <p className="text-[8px] font-black text-cyan-500/70 uppercase tracking-widest mb-1">
+                      Rossi
+                    </p>
+                    <p className="text-2xl font-black text-cyan-400">
+                      {getAverage('total_red_cards')}
+                    </p>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center shadow-lg">
+                    <p className="text-[8px] font-black text-cyan-500/70 uppercase tracking-widest mb-1">
+                      Rigori
+                    </p>
+                    <p className="text-2xl font-black text-cyan-400">
+                      {getAverage('total_penalties')}
+                    </p>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center shadow-lg">
+                    <p className="text-[8px] font-black text-cyan-500/70 uppercase tracking-widest mb-1">
+                      Autogol
+                    </p>
+                    <p className="text-2xl font-black text-cyan-400">
+                      {getAverage('total_own_goals')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Classifiche Testuali (Top 3) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  {
+                    id: 'winner',
+                    label: 'Squadra Vincitrice',
+                    data: getTopWinnerPicks(),
+                  },
+                  {
+                    id: 'top_scorer',
+                    label: 'Capocannoniere',
+                    data: getTopPicks('top_scorer'),
+                  },
+                  {
+                    id: 'mvp_world_cup',
+                    label: 'MVP Mondiale',
+                    data: getTopPicks('mvp_world_cup'),
+                  },
+                  {
+                    id: 'highest_scoring_group',
+                    label: 'Girone + Gol',
+                    data: getTopPicks('highest_scoring_group'),
+                  },
+                  {
+                    id: 'lowest_scoring_group',
+                    label: 'Girone - Gol',
+                    data: getTopPicks('lowest_scoring_group'),
+                  },
+                ].map((stat) => {
+                  return (
+                    <div
+                      key={stat.id}
+                      className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-lg"
+                    >
+                      <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800/50">
+                        {stat.label} (Top Voti)
+                      </h3>
+                      {stat.data.length > 0 ? (
+                        <div className="space-y-2">
+                          {stat.data.map(([name, count], idx) => (
+                            <div
+                              key={name}
+                              className="flex items-center justify-between text-xs font-black uppercase italic"
+                            >
+                              <span className="truncate pr-2 text-slate-300">
+                                {idx === 0 ? '🥇 ' : idx === 1 ? '🥈 ' : '🥉 '}{' '}
+                                {name}
+                              </span>
+                              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded-md text-cyan-500 border border-cyan-500/20 shadow-sm shrink-0">
+                                {count} voti
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-600 font-bold uppercase italic">
+                          Nessun dato
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
