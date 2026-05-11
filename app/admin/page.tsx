@@ -45,109 +45,30 @@ const GROUPS = [
 ];
 
 const TEAMS_2026 = [
-  'Algeria',
-  'Arabia Saudita',
-  'Argentina',
-  'Australia',
-  'Austria',
-  'Belgio',
-  'Bosnia ed Erzegovina',
-  'Brasile',
-  'Canada',
-  'Capo Verde',
-  'Colombia',
-  'Corea del Sud',
-  "Costa d'Avorio",
-  'Croazia',
-  'Curaçao',
-  'Ecuador',
-  'Egitto',
-  'Francia',
-  'Germania',
-  'Ghana',
-  'Giappone',
-  'Giordania',
-  'Haiti',
-  'Inghilterra',
-  'Iran',
-  'Iraq',
-  'Marocco',
-  'Messico',
-  'Norvegia',
-  'Nuova Zelanda',
-  'Olanda',
-  'Panama',
-  'Paraguay',
-  'Portogallo',
-  'Qatar',
-  'Repubblica Ceca',
-  'Repubblica Democratica del Congo',
-  'Scozia',
-  'Senegal',
-  'Spagna',
-  'Stati Uniti',
-  'Sudafrica',
-  'Svezia',
-  'Svizzera',
-  'Tunisia',
-  'Turchia',
-  'Uruguay',
-  'Uzbekistan',
+  'Algeria', 'Arabia Saudita', 'Argentina', 'Australia', 'Austria', 'Belgio',
+  'Bosnia ed Erzegovina', 'Brasile', 'Canada', 'Capo Verde', 'Colombia',
+  'Corea del Sud', "Costa d'Avorio", 'Croazia', 'Curaçao', 'Ecuador', 'Egitto',
+  'Francia', 'Germania', 'Ghana', 'Giappone', 'Giordania', 'Haiti', 'Inghilterra',
+  'Iran', 'Iraq', 'Marocco', 'Messico', 'Norvegia', 'Nuova Zelanda', 'Olanda',
+  'Panama', 'Paraguay', 'Portogallo', 'Qatar', 'Repubblica Ceca',
+  'Repubblica Democratica del Congo', 'Scozia', 'Senegal', 'Spagna',
+  'Stati Uniti', 'Sudafrica', 'Svezia', 'Svizzera', 'Tunisia', 'Turchia',
+  'Uruguay', 'Uzbekistan',
 ].sort();
 
 const flagMap: { [key: string]: string } = {
-  algeria: 'dz',
-  'arabia saudita': 'sa',
-  argentina: 'ar',
-  australia: 'au',
-  austria: 'at',
-  belgio: 'be',
-  'bosnia ed erzegovina': 'ba',
-  'bosnia erzegovina': 'ba',
-  brasile: 'br',
-  canada: 'ca',
-  'capo verde': 'cv',
-  colombia: 'co',
-  'corea del sud': 'kr',
-  "costa d'avorio": 'ci',
-  croazia: 'hr',
-  curaçao: 'cw',
-  curacao: 'cw',
-  ecuador: 'ec',
-  egitto: 'eg',
-  francia: 'fr',
-  germania: 'de',
-  ghana: 'gh',
-  giappone: 'jp',
-  giordania: 'jo',
-  haiti: 'ht',
-  inghilterra: 'gb-eng',
-  iran: 'ir',
-  iraq: 'iq',
-  marocco: 'ma',
-  messico: 'mx',
-  norvegia: 'no',
-  'nuova zelanda': 'nz',
-  olanda: 'nl',
-  panama: 'pa',
-  paraguay: 'py',
-  portogallo: 'pt',
-  qatar: 'qa',
-  'repubblica ceca': 'cz',
-  'repubblica democratica del congo': 'cd',
-  congo: 'cd',
-  scozia: 'gb-sct',
-  senegal: 'sn',
-  spagna: 'es',
-  'stati uniti': 'us',
-  usa: 'us',
-  sudafrica: 'za',
-  svezia: 'se',
-  svizzera: 'ch',
-  tunisia: 'tn',
-  turchia: 'tr',
-  uruguay: 'uy',
-  uzbekistan: 'uz',
+  algeria: 'dz', 'arabia saudita': 'sa', argentina: 'ar', australia: 'au', austria: 'at',
+  belgio: 'be', 'bosnia ed erzegovina': 'ba', 'bosnia erzegovina': 'ba',
+  brasile: 'br', canada: 'ca', 'capo verde': 'cv', colombia: 'co', 'corea del sud': 'kr',
+  "costa d'avorio": 'ci', croazia: 'hr', curaçao: 'cw', curacao: 'cw',
+  ecuador: 'ec', egitto: 'eg', francia: 'fr', germania: 'de', ghana: 'gh', giappone: 'jp',
+  giordania: 'jo', haiti: 'ht', inghilterra: 'gb-eng', iran: 'ir', iraq: 'iq', marocco: 'ma',
+  messico: 'mx', norvegia: 'no', 'nuova zelanda': 'nz', olanda: 'nl', panama: 'pa', paraguay: 'py',
+  portogallo: 'pt', qatar: 'qa', 'repubblica ceca': 'cz',
+  'repubblica democratica del congo': 'cd', congo: 'cd',
+  scozia: 'gb-sct', senegal: 'sn', spagna: 'es', 'stati uniti': 'us', usa: 'us',
+  sudafrica: 'za', svezia: 'se', svizzera: 'ch', tunisia: 'tn', turchia: 'tr',
+  uruguay: 'uy', uzbekistan: 'uz',
 };
 
 const normalizeStage = (s: string) => {
@@ -268,11 +189,10 @@ export default function AdminPage() {
   }
 
   const syncLeaderboard = async () => {
-    if (!window.confirm("Vuoi ricalcolare i punti per tutti i giocatori? L'operazione sovrascriverà la classifica attuale.")) return;
+    if (!window.confirm("Vuoi ricalcolare i punti e la classifica per tutti i giocatori? L'operazione sovrascriverà la classifica attuale.")) return;
 
     setSyncing(true);
     try {
-      // 1. Scarichiamo tutti i dati necessari
       const [
         { data: profs },
         { data: allMatches },
@@ -293,21 +213,22 @@ export default function AdminPage() {
 
       if (!profs) throw new Error("Errore caricamento profili");
 
-      // 2. Ricalcoliamo i punti utente per utente
-      const updates = profs.map(profile => {
-        let totalScore = 0;
+      // 1. Calcolo Punti Parziali e Totali
+      const calculatedData = profs.map(profile => {
+        let pGroups = 0;
+        let pBracket = 0;
+        let pBonus = 0;
 
-        // Punti Partite (Regole Avanzate)
+        // Punti Partite (Regole: 10, 6, 4, 2)
         const uPreds = allPreds?.filter(p => p.user_id === profile.id) || [];
         uPreds.forEach(pred => {
           const m = allMatches?.find(m => m.id === pred.match_id);
           if (m) {
-            const pH = pred.home_score;
-            const pA = pred.away_score;
-            const mH = m.home_score_final;
-            const mA = m.away_score_final;
+            const pH = Number(pred.home_score);
+            const pA = Number(pred.away_score);
+            const mH = Number(m.home_score_final);
+            const mA = Number(m.away_score_final);
 
-            // Determiniamo i segni (1 = Vittoria Casa, -1 = Vittoria Trasferta, 0 = Pareggio)
             const pSign = pH > pA ? 1 : pH < pA ? -1 : 0;
             const mSign = mH > mA ? 1 : mH < mA ? -1 : 0;
             
@@ -315,15 +236,10 @@ export default function AdminPage() {
             const exactHome = pH === mH;
             const exactAway = pA === mA;
 
-            if (exactHome && exactAway) {
-              totalScore += 10; // 10 PUNTI RISULTATO ESATTO
-            } else if (correctSign && (exactHome || exactAway)) {
-              totalScore += 6;  // 6 PUNTI SEGNO CORRETTO E SINGOLO VALORE
-            } else if (correctSign && !exactHome && !exactAway) {
-              totalScore += 4;  // 4 PUNTI SOLO SEGNO CORRETTO
-            } else if (!correctSign && (exactHome || exactAway)) {
-              totalScore += 2;  // 2 PUNTI SOLO SINGOLO VALORE (MA SEGNO ERRATO)
-            }
+            if (exactHome && exactAway) pGroups += 10;
+            else if (correctSign && (exactHome || exactAway)) pGroups += 6;
+            else if (correctSign && !exactHome && !exactAway) pGroups += 4;
+            else if (!correctSign && (exactHome || exactAway)) pGroups += 2;
           }
         });
 
@@ -332,7 +248,7 @@ export default function AdminPage() {
         uBracket.forEach(ub => {
           const isCorrect = offBracket?.some(ob => normalizeStage(ob.stage) === normalizeStage(ub.stage) && ob.team_name.toLowerCase().trim() === ub.team_name.toLowerCase().trim());
           if (isCorrect) {
-            totalScore += STAGES.find(s => s.id === normalizeStage(ub.stage))?.pts || 0;
+            pBracket += STAGES.find(s => s.id === normalizeStage(ub.stage))?.pts || 0;
           }
         });
 
@@ -342,7 +258,7 @@ export default function AdminPage() {
           const checkBonus = (key: string) => {
             if (offBonuses[key] != null && offBonuses[key] !== '') {
               if (String(offBonuses[key]).toLowerCase().trim() === String(uBonus[key]).toLowerCase().trim()) {
-                totalScore += 10;
+                pBonus += 10;
               }
             }
           };
@@ -356,14 +272,27 @@ export default function AdminPage() {
           checkBonus('lowest_scoring_group');
         }
 
-        return { id: profile.id, points: totalScore };
+        return { 
+          id: profile.id, 
+          points: pGroups + pBracket + pBonus,
+          points_groups: pGroups,
+          points_bracket: pBracket,
+          points_bonus: pBonus
+        };
       });
 
-      // 3. Spediamo i nuovi punteggi su Supabase in un colpo solo
+      // 2. Calcolo Ranking (Ordina dal più alto al più basso)
+      const sorted = [...calculatedData].sort((a, b) => b.points - a.points);
+      const updates = sorted.map((u, index) => ({
+        ...u,
+        ranking: (index + 1).toString()
+      }));
+
+      // 3. Spediamo su Supabase (Bulk Update)
       const { error } = await supabase.from('profiles').upsert(updates, { onConflict: 'id' });
       if (error) throw error;
 
-      toast.success(`Classifica ricalcolata per ${updates.length} giocatori! 🚀`);
+      toast.success(`Classifica e Ranking sincronizzati per ${updates.length} giocatori! 🚀`);
       fetchData(); 
     } catch (err: any) {
       toast.error("Errore nel ricalcolo: " + err.message);
@@ -520,9 +449,9 @@ export default function AdminPage() {
         <button 
           onClick={syncLeaderboard}
           disabled={syncing}
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all active:scale-95 disabled:opacity-50"
+          className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all active:scale-95 disabled:opacity-50"
         >
-          <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
+          <RefreshCw size={18} className={syncing ? "animate-spin" : ""} />
           {syncing ? 'Calcolo Matematico in corso...' : 'Sincronizza Classifica'}
         </button>
       </header>
@@ -557,10 +486,10 @@ export default function AdminPage() {
                   <div>
                     <p className="font-black text-sm uppercase italic text-white flex items-center gap-2">
                       {p.username || 'Guerriero'}
-                      <span className="bg-slate-800 text-slate-400 text-[9px] px-2 py-0.5 rounded-full">{p.points || 0} pt</span>
+                      <span className="text-yellow-500">#{p.ranking || '--'}</span>
                     </p>
-                    <p className="text-[9px] text-slate-500 font-mono">
-                      {p.email}
+                    <p className="text-[9px] text-slate-500 mt-1 font-mono uppercase tracking-widest">
+                      {p.points || 0} PT ({p.points_groups || 0}G + {p.points_bracket || 0}F + {p.points_bonus || 0}B)
                     </p>
                   </div>
                   <button
@@ -609,7 +538,7 @@ export default function AdminPage() {
                 <input
                   type="text"
                   placeholder="CERCA SQUADRA..."
-                  className="bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase focus:border-yellow-500 outline-none w-full transition-all"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase focus:border-yellow-500 outline-none w-full transition-all"
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
@@ -669,7 +598,7 @@ export default function AdminPage() {
                               id={`h-${m.id}`}
                               type="number"
                               defaultValue={m.home_score_final ?? ''}
-                              className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none"
+                              className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none focus:border-yellow-500"
                             />
                           </div>
                           <span className="text-slate-700 font-black">-</span>
@@ -678,7 +607,7 @@ export default function AdminPage() {
                               id={`a-${m.id}`}
                               type="number"
                               defaultValue={m.away_score_final ?? ''}
-                              className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none"
+                              className="w-12 h-10 bg-slate-950 border border-slate-700 rounded-xl text-center font-black text-xl text-yellow-500 outline-none focus:border-yellow-500"
                             />
                             {awayFlag ? (
                               <img
@@ -852,7 +781,7 @@ export default function AdminPage() {
                       }
                       type="number"
                       placeholder="Vuoto = Nessun dato"
-                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700 focus:border-purple-500"
                     />
                   </div>
                   <div className="space-y-1">
@@ -869,7 +798,7 @@ export default function AdminPage() {
                       }
                       type="number"
                       placeholder="Vuoto = Nessun dato"
-                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700 focus:border-purple-500"
                     />
                   </div>
                   <div className="space-y-1">
@@ -886,7 +815,7 @@ export default function AdminPage() {
                       }
                       type="number"
                       placeholder="Vuoto = Nessun dato"
-                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black text-purple-400 outline-none placeholder:text-slate-700 focus:border-purple-500"
                     />
                   </div>
                 </div>
@@ -902,7 +831,7 @@ export default function AdminPage() {
                         setBonusData({ ...bonusData, top: e.target.value })
                       }
                       placeholder="Es. Mbappé"
-                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700 focus:border-purple-500"
                     />
                   </div>
                   <div className="space-y-1">
@@ -918,7 +847,7 @@ export default function AdminPage() {
                         })
                       }
                       placeholder="Es. Lamine Yamal"
-                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none placeholder:text-slate-700 focus:border-purple-500"
                     />
                   </div>
                 </div>
@@ -932,7 +861,7 @@ export default function AdminPage() {
                     onChange={(e) =>
                       setBonusData({ ...bonusData, high: e.target.value })
                     }
-                    className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none text-sm"
+                    className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none text-sm focus:border-purple-500"
                   >
                     <option value="">Seleziona Partita...</option>
                     {matches
@@ -961,7 +890,7 @@ export default function AdminPage() {
                           high_group: e.target.value,
                         })
                       }
-                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none focus:border-purple-500"
                     >
                       <option value="">Seleziona Girone...</option>
                       {GROUPS.map((g) => (
@@ -983,7 +912,7 @@ export default function AdminPage() {
                           low_group: e.target.value,
                         })
                       }
-                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none"
+                      className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl font-black uppercase outline-none appearance-none focus:border-purple-500"
                     >
                       <option value="">Seleziona Girone...</option>
                       {GROUPS.map((g) => (
